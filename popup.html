@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NetSuite SuiteQL Runner</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 10px;
+        }
+        #query {
+            width: 100%;
+            height: 100px;
+            margin-bottom: 10px;
+        }
+        #runQuery {
+            width: 100%;
+            padding: 10px;
+            background-color: #0070d2;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        #resultTable {
+            width: 100%;
+            margin-top: 20px;
+            border-collapse: collapse;
+        }
+        #resultTable th, #resultTable td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+        #resultTable th {
+            background-color: #f2f2f2;
+            text-align: left;
+        }
+    </style>
+</head>
+<body>
+    <textarea id="query" placeholder="Enter SuiteQL query here"></textarea>
+    <button id="runQuery">Run Query</button>
+    <div id="result"></div>
+    <table id="resultTable"></table>
+    <script src="popup.js"></script>
+</body>
+</html>
