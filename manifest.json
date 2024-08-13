@@ -13,7 +13,7 @@
         "48": "images/net.png",
         "128": "images/net.png"
       },
-      "host_permissions": ["https://*.suitetalk.api.netsuite.com/"]
+      "host_permissions": ["https://*.netsuite.com/"]
     }
   }
   
