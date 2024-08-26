@@ -1,55 +1,61 @@
 document.getElementById('runQuery').addEventListener('click', () => {
     const query = document.getElementById('query').value;
+    console.log('Sending query:', query);
 
-    if (query) {
-        const config = {
-            ACCOUNT_ID: 'TD2929968',
-            CONSUMER_KEY: 'a3352c15dae2741f320b87bedb078952c13064e28f854b4655df0cffcadb1c2c',
-            CONSUMER_SECRET: '5bb481b7b4b67c3bd1b00e92caaf0a7195f9a9410286ed614e59f71166af26ae',
-            TOKEN_ID: '1d947dcd9423f8fb2c1fca69fa30b3c84e41e7082d26bca3bc321fe2145a1d51',
-            TOKEN_SECRET: 'bf38fe3351af4bdd3c314745c000761f2463957fb9187c1fd412d11b17e98f1d'
-        };
-
-        chrome.runtime.sendMessage({ action: 'runSuiteQL', query, config }, response => {
-            if (chrome.runtime.lastError) {
-                document.getElementById('result').textContent = `Error: ${chrome.runtime.lastError.message}`;
-            } else if (response.error) {
-                document.getElementById('result').textContent = `Error: ${response.error}`;
-            } else {
-                displayTable(response.result.items);
-            }
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const activeTab = tabs[0];
+        chrome.scripting.executeScript({
+            target: { tabId: activeTab.id },
+            func: (query) => {
+                window.postMessage({ type: 'RUN_QUERY', query: query }, '*');
+            },
+            args: [query]
         });
-    } else {
-        document.getElementById('result').textContent = "Please enter a SuiteQL query.";
+    });
+});
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'QUERY_RESULTS') {
+        console.log('Received query results:', message.data);
+        const results = JSON.parse(message.data);
+        displayResultsInTable(results);
     }
 });
 
-function displayTable(data) {
-    const table = document.getElementById('resultTable');
-    table.innerHTML = ''; 
-    if (data.length === 0) {
-        table.innerHTML = '<tr><td colspan="100%">No results found</td></tr>';
-        return;
-    }
+function displayResultsInTable(results) {
+    const output = document.getElementById('output');
+    output.innerHTML = '';  // Clearing previous results
 
-    
-    const headers = Object.keys(data[0]);
-    const headerRow = document.createElement('tr');
-    headers.forEach(header => {
-        const th = document.createElement('th');
-        th.textContent = header;
-        headerRow.appendChild(th);
-    });
-    table.appendChild(headerRow);
+    if (Array.isArray(results) && results.length > 0) {
+        const table = document.createElement('table');
+        table.className = 'results-table';
 
- 
-    data.forEach(row => {
-        const rowElement = document.createElement('tr');
-        headers.forEach(header => {
-            const td = document.createElement('td');
-            td.textContent = row[header] !== null ? row[header] : ''; 
-            rowElement.appendChild(td);
+        // Creating table header
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        Object.keys(results[0]).forEach(key => {
+            const th = document.createElement('th');
+            th.textContent = key;
+            headerRow.appendChild(th);
         });
-        table.appendChild(rowElement);
-    });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        // Creating table body
+        const tbody = document.createElement('tbody');
+        results.forEach(result => {
+            const row = document.createElement('tr');
+            Object.values(result).forEach(value => {
+                const td = document.createElement('td');
+                td.textContent = value !== null ? value : '';  // Handleing null values
+                row.appendChild(td);
+            });
+            tbody.appendChild(row);
+        });
+        table.appendChild(tbody);
+
+        output.appendChild(table);
+    } else {
+        output.textContent = 'No results found or an error occurred.';
+    }
 }
