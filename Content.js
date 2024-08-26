@@ -1,61 +1,19 @@
-document.getElementById('runQuery').addEventListener('click', () => {
-    const query = document.getElementById('query').value;
-    console.log('Sending query:', query);
+console.log('Content script is running.');
 
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        const activeTab = tabs[0];
-        chrome.scripting.executeScript({
-            target: { tabId: activeTab.id },
-            func: (query) => {
-                window.postMessage({ type: 'RUN_QUERY', query: query }, '*');
-            },
-            args: [query]
-        });
-    });
-});
+const script = document.createElement('script');
+script.src = chrome.runtime.getURL('injectedScript.js');
+script.onload = function() {
+    console.log('Injected script successfully.');
+    this.remove();
+};
+(document.head || document.documentElement).appendChild(script);
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === 'QUERY_RESULTS') {
-        console.log('Received query results:', message.data);
-        const results = JSON.parse(message.data);
-        displayResultsInTable(results);
+console.log('Attempting to inject the script into the page.');
+
+// Listening for messages from the injected script and forward them to the popup
+window.addEventListener('message', function(event) {
+    if (event.data.type && event.data.type === 'FROM_PAGE') {
+        console.log('Received results from injected script:', event.data.text);
+        chrome.runtime.sendMessage({ type: 'QUERY_RESULTS', data: event.data.text });
     }
 });
-
-function displayResultsInTable(results) {
-    const output = document.getElementById('output');
-    output.innerHTML = '';  // Clear previous results
-
-    if (Array.isArray(results) && results.length > 0) {
-        const table = document.createElement('table');
-        table.className = 'results-table';
-
-        // Create table header
-        const thead = document.createElement('thead');
-        const headerRow = document.createElement('tr');
-        Object.keys(results[0]).forEach(key => {
-            const th = document.createElement('th');
-            th.textContent = key;
-            headerRow.appendChild(th);
-        });
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
-
-        // Create table body
-        const tbody = document.createElement('tbody');
-        results.forEach(result => {
-            const row = document.createElement('tr');
-            Object.values(result).forEach(value => {
-                const td = document.createElement('td');
-                td.textContent = value !== null ? value : '';  // Handle null values
-                row.appendChild(td);
-            });
-            tbody.appendChild(row);
-        });
-        table.appendChild(tbody);
-
-        output.appendChild(table);
-    } else {
-        output.textContent = 'No results found or an error occurred.';
-    }
-}
