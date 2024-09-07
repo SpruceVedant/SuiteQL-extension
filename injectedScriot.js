@@ -260,6 +260,7 @@
                 executeSuiteQLQuery(event.data.query);
             } else if (event.data.type === 'RUN_UNAPPLIED_PAYMENTS_CHECK') {
                 console.log('Received request to check unapplied payments.');
+                showLoader();
                 checkUnappliedPayments();
             } else if (event.data.type === 'SEND_TO_SALESFORCE') {
                 console.log('Received request to send customer to Salesforce.');
