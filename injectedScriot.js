@@ -266,6 +266,7 @@
                 console.log('Received request to send customer to Salesforce.');
                 alert('Synced Successfuly');
                 sendCustomerToSalesforce(event.data.customerId);
+                showLoader();
             } else if (event.data.type === 'FETCH_ALL_FIELDS') {
                 console.log('Fetching all fields from the current record.');
                 fetchAllFields();
