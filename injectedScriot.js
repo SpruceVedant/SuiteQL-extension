@@ -269,6 +269,7 @@
                 showLoader();
             } else if (event.data.type === 'FETCH_ALL_FIELDS') {
                 console.log('Fetching all fields from the current record.');
+                 alert('Successful...');
                 fetchAllFields();
             }
         }
