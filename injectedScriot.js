@@ -55,7 +55,7 @@
                 
             } catch (error) {
                 console.error('Error checking unapplied payments:', error);
-                window.postMessage({ type: 'UNAPPLIED_PAYMENTS_RESULT', text: 'Error: ' + error.message }, '*');
+                window.postMessage({ type: 'UNAPPLIED_PAYMENTS_RESULLT ', text: 'Error: ' + error.message }, '*');
                 
                 injectHideLoaderScript();
             }
@@ -229,7 +229,6 @@
         doc.close();
     }
 
-    // Function to construct the URL for navigating to the field's configuration page
     function getFieldConfigurationUrl(fieldId) {
         // Modify this logic based on how you determine field types
         return `https://td2929968.app.netsuite.com/app/common/custom/bodycustfield.nl?id=${fieldId}&e=T`;
