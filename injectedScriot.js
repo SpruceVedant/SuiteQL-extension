@@ -251,7 +251,6 @@
         script.remove();
     }
 
-    // Listening for messages from the extension
     window.addEventListener('message', function(event) {
         if (event.data.type) {
             if (event.data.type === 'RUN_QUERY') {
