@@ -230,7 +230,7 @@
     }
 
     function getFieldConfigurationUrl(fieldId) {
-        // Modify this logic based on how you determine field types
+       
         return `https://td2929968.app.netsuite.com/app/common/custom/bodycustfield.nl?id=${fieldId}&e=T`;
     }
 
