@@ -107,6 +107,9 @@
         });
     }
 
+    functionFetchAllSublists() {
+        require() {}
+    }
     // Function to fetch all fields from the current record and display them in a new window
     function fetchAllFields() {
         require(['N/record'], function(record) {
