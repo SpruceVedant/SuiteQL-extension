@@ -1,17 +1,252 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <title>NetSuite SuiteQL Runner</title>
-    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* General Reset */
+        body,
+        h2,
+        textarea,
+        button,
+        select,
+        label {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            box-sizing: border-box;
+        }
+
+        /* Container Styling */
+        #container {
+            width: 600px;
+            padding: 15px;
+            background-color: #f4f4f4;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Title Styling */
+        h2 {
+            color: #007bff;
+            margin-bottom: 10px;
+            text-align: center;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        /* Textarea Styling */
+        textarea {
+            width: 100%;
+            height: 80px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 14px;
+            resize: none;
+            outline: none;
+            margin-bottom: 10px;
+            background-color: #fff;
+        }
+
+        textarea::placeholder {
+            color: #999;
+        }
+
+        /* Button Styling */
+        button {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            background-color: #007bff;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            margin-bottom: 10px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        /* Dropdown and Label Styling */
+        label {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 5px;
+            display: block;
+        }
+
+        select {
+            width: 100%;
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            margin-bottom: 10px;
+            font-size: 14px;
+            background-color: #fff;
+        }
+
+        /* Script Section Styling */
+        .script-section {
+            margin-top: 20px;
+        }
+
+        /* Output Area Styling */
+        pre {
+            margin-top: 10px;
+            background-color: #e9ecef;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+            height: 150px;
+            overflow: auto;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        /* Lazy loader */
+        #loader {
+            border: 16px solid #f3f3f3;
+            /* Light grey */
+            border-top: 16px solid #3498db;
+            /* Blue */
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 2s linear infinite;
+            position: fixed;
+            top: 44%;
+            left: 44%;
+            transform: translate(-50%, -50%);
+            display: none;
+            z-index: 9999;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Message box for errors */
+        #errorBox {
+            position: fixed;
+            top: 10%;
+            left: 50%;
+            transform: translate(-50%, -10%);
+            background-color: #ffdddd;
+            color: #a94442;
+            padding: 10px;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+            display: none;
+            z-index: 9999;
+        }
+
+        /* Footer Styling */
+        .footer {
+            margin-top: 10px;
+            text-align: center;
+            font-size: 12px;
+            color: #888;
+        }
+
+        .footer a {
+            color: #007bff;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Salesforce Integration Section */
+        .integration-section {
+            margin-top: 20px;
+            border-top: 1px solid #ccc;
+            padding-top: 10px;
+        }
+
+        .integration-section input {
+            width: calc(100% - 22px);
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+
+        /* Natural Language Query Section */
+        .nl-query-section {
+            margin-top: 20px;
+        }
+    </style>
 </head>
+
 <body>
     <div id="container">
         <h2>NetSuite SuiteQL Runner</h2>
+
+        <label for="queryHistory">Query History:</label>
+        <select id="queryHistory">
+            <option value="" disabled selected>Select a previous query...</option>
+        </select>
+
+        <label for="query">Enter your SuiteQL query:</label>
         <textarea id="query" placeholder="Enter your SuiteQL query here"></textarea>
+
         <button id="runQuery">Run Query</button>
+
+        <div class="nl-query-section">
+            <label for="naturalLanguageQuery">Enter Natural Language Query:</label>
+            <textarea id="naturalLanguageQuery" placeholder="Enter natural language query here"></textarea>
+            <button id="convertToSuiteQL">Convert to SuiteQL</button>
+        </div>
+
+        <div class="script-section">
+            <label for="scriptSelect">Choose a Task:</label>
+            <select id="scriptSelect">
+                <option value="" disabled selected>Select a Task...</option>
+                <option value="checkUnappliedPayments">Monitor Unapplied Payments</option>
+                <option value="cloneSalesOrder">Clone a Sales Order with All Its Line Items</option>
+                <option value="check&Notify">Check and Notify Low Stock Items</option>
+            </select>
+            <button id="runScript">Run Task</button>
+        </div>
+
+        <!-- Salesforce Integration Section -->
+        <div class="integration-section">
+            <label for="customerId">Enter Customer ID to Send to Salesforce:</label>
+            <input type="text" id="customerId" placeholder="Customer Internal ID">
+            <button id="sendToSalesforce">Send to Salesforce</button>
+        </div>
+
+        <!-- Add this section to your existing popup.html -->
+        <div class="fetch-fields-section">
+            <button id="fetchFields">Fetch All Fields from Current Record</button>
+        </div>
+
         <pre id="output"></pre>
+
+        <div id="loader"></div>
+        <div id="errorBox"></div>
+
+        <div class="footer">
+            <p>Powered by NetSuite</p>
+            <p>Need help? <a href="https://suiteanswers.custhelp.com/app/home" target="_blank">Visit SuiteAnswers</a></p>
+        </div>
     </div>
     <script src="popup.js"></script>
 </body>
+
 </html>
