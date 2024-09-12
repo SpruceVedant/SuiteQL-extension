@@ -55,7 +55,7 @@
                 
             } catch (error) {
                 console.error('Error checking unapplied payments:', error);
-                window.postMessage({ type: 'UNAPPLIED_PAYMENTS_RESULLT ', text: 'Error: ' + error.message }, '*');
+                window.postMessage({ type: 'UNAPPLIED_PAYMENTS_RESULT', text: 'Error: ' + error.message }, '*');
                 
                 injectHideLoaderScript();
             }
@@ -84,14 +84,16 @@
                     url: 'https://blueflamelabs-7d-dev-ed.develop.my.salesforce.com/services/data/v61.0/sobjects/Account/',
                     body: JSON.stringify(customerData),
                     headers: {
-                        'Authorization': 'Bearer 00D5g00000LNAsc!AR0AQKc27ZcZoWhiDkomi87iDi_uOzAuv.PAYfUf6ZOTI9jFG3Fk5QAzupkyQYlqXH9KS78w.EHDkuXgnLQDcFAb.OnGhL.n',
+                        'Authorization': 'Bearer 00D5g00000LNAsc!AR0AQD0EscMqthkO3kScfTVhs6vSuFzur9cA_RCKG5QpCQQwWTRJpxYj2jWncf2th_qNvs9Q81H5OBjv4TJ.OwvrwnAHX2dL',
                         'Content-Type': 'application/json'
                     }
                 });
 
                 if (salesforceResponse.code === 200 || salesforceResponse.code === 201) {
-                    window.postMessage({ type: 'SALESFORCE_SUCCESS', text: 'Customer successfully sent to Salesforce.' }, '*');
-                    console.log('Customer synced successfuly!!');
+                    const responseData = JSON.parse(salesforceResponse.body);
+                    const salesforceAccountId = responseData.id;
+                    window.postMessage({ type: 'SALESFORCE_SUCCESS', text: 'Customer successfully sent to Salesforce.' , salesforceAccountId: salesforceAccountId}, '*');
+                    console.log('Customer synced successfuly!!', salesforceAccountId);
                 } else {
                     window.postMessage({ type: 'SALESFORCE_ERROR', text: 'Error sending customer to Salesforce. Response: ' + salesforceResponse.body }, '*');
                 }
@@ -107,9 +109,6 @@
         });
     }
 
-    functionFetchAllSublists() {
-        require() {}
-    }
     // Function to fetch all fields from the current record and display them in a new window
     function fetchAllFields() {
         require(['N/record'], function(record) {
@@ -137,6 +136,7 @@
 
                 // Open a new window to display the results and allow navigation
                 openResultsInNewWindow(fieldValues);
+                window.postMessage({type: 'FIELDS_FETCHED',text: 'Fields successfully fetched.' }, '*');
 
             } catch (error) {
                 console.error('Error fetching fields:', error);
@@ -162,7 +162,16 @@
             recordType = record.Type.VENDOR;
         } else if (path.includes('/app/accounting/transactions/purchord.nl')) {
             recordType = record.Type.PURCHASE_ORDER;
-        } else {
+        } else if (path.includes('/app/accounting/transactions/custinvc.nl')) {
+            recordType = record.Type.INVOICE;
+        } else if (path.includes('/app/accounting/transactions/opprtnty.nl')) {
+            recordType = record.Type.OPPORTUNITY;
+        } else if(path.includes('/app/common/item/item.nl')) {
+            recordType = record.Type.ITEM;
+        } else if(path.includes('/app/common/item/item.nl')) {
+            recordType = record.Type.INVOICE;
+        }
+            else {
             console.error('Record type not recognized from the URL.');
         }
 
@@ -232,8 +241,9 @@
         doc.close();
     }
 
+    // Function to construct the URL for navigating to the field's configuration page
     function getFieldConfigurationUrl(fieldId) {
-       
+        // Modify this logic based on how you determine field types
         return `https://td2929968.app.netsuite.com/app/common/custom/bodycustfield.nl?id=${fieldId}&e=T`;
     }
 
@@ -254,6 +264,7 @@
         script.remove();
     }
 
+    // Listening for messages from the extension
     window.addEventListener('message', function(event) {
         if (event.data.type) {
             if (event.data.type === 'RUN_QUERY') {
@@ -261,16 +272,14 @@
                 executeSuiteQLQuery(event.data.query);
             } else if (event.data.type === 'RUN_UNAPPLIED_PAYMENTS_CHECK') {
                 console.log('Received request to check unapplied payments.');
-                showLoader();
                 checkUnappliedPayments();
             } else if (event.data.type === 'SEND_TO_SALESFORCE') {
                 console.log('Received request to send customer to Salesforce.');
-                alert('Synced Successfuly');
                 sendCustomerToSalesforce(event.data.customerId);
-                showLoader();
+                const salesforceUrl = `https://blueflamelabs-7d-dev-ed.develop.my.salesforce.com/lightning/r/Account/${salesforceAccountId}/view`;
+                window.open(salesforceUrl, '_blank');
             } else if (event.data.type === 'FETCH_ALL_FIELDS') {
                 console.log('Fetching all fields from the current record.');
-                 alert('Successful...');
                 fetchAllFields();
             }
         }
