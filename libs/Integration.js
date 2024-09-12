@@ -2,7 +2,7 @@
     require(['N/https', 'N/record'], function(https, record) {
         try {
            
-            var customerId = '';//Actual Id populated by the script
+            var customerId = '';
             var customerRecord = record.load({
                 type: record.Type.CUSTOMER,
                 id: customerId
