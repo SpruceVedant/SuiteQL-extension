@@ -11,36 +11,36 @@ script.onload = function() {
 
 console.log('Attempting to inject the script into the page.');
 
-// Listening for messages from the injected script and forwarding them to the popup
+// messages from the injected script and forwarding them to the popup (Listening)
 window.addEventListener('message', function(event) {
     if (event.data.type) {
-        // Handle SuiteQL query results
+       
         if (event.data.type === 'FROM_PAGE') {
             console.log('Received results from injected script:', event.data.text);
             chrome.runtime.sendMessage({ type: 'QUERY_RESULTS', data: event.data.text });
         }
         
-        // Handle unapplied payments results
+    
         if (event.data.type === 'UNAPPLIED_PAYMENTS_RESULT') {
             console.log('Received Message', event.data.text);
             chrome.runtime.sendMessage({ type: 'UNAPPLIED_PAYMENTS_RESULT', data: event.data.text });
         }
 
-        // Handle Salesforce success (account creation) and navigate to the account page
+        
         if (event.data.type === 'SALESFORCE_SUCCESS') {
             console.log('Received Message: Salesforce Account Created', event.data.text);
 
-            // Sending the Salesforce account ID back to popup.js or opening Salesforce page
+            // Sending the Salesforce account ID back to popup.js or opening Salesforce page, the handling logic is based in popup.js & injected script
             chrome.runtime.sendMessage({ type: 'SALESFORCE_SUCCESS', data: event.data.text });
 
-            // Open the Salesforce Account page directly in a new tab
-            const salesforceAccountId = event.data.salesforceAccountId;  // This ID should come from the injected script
+            // Opening the Salesforce Account page directly in a same tab for now but 
+            const salesforceAccountId = event.data.salesforceAccountId;  // This ID should come from the injected script if it isin't than
             const salesforceUrl = `https://blueflamelabs-7d-dev-ed.develop.my.salesforce.com/lightning/r/Account/${salesforceAccountId}/view`;
             // window.open(salesforceUrl, '_blank');
             window.location.href = salesforceUrl;
         }
 
-        // Handle field fetching results
+        
         if (event.data.type === 'FIELDS_FETCHED') {
             console.log('Received Message: Fields Fetched', event.data.text);
             chrome.runtime.sendMessage({ type: 'FIELDS_FETCHED', data: event.data.text });
