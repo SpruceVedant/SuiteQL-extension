@@ -1,18 +1,37 @@
 {
-    "manifest_version": 3,
-    "name": "NetSuite SuiteQL Runner",
-    "version": "1.0",
-    "permissions": ["activeTab", "scripting", "storage", "https://*.suitetalk.api.netsuite.com/"],
-    "background": {
-      "service_worker": "background.js"
-    },
-    "action": {
-      "default_popup": "popup.html",
-      "default_icon": {
-        "16": "images/net.png",
-        "48": "images/net.png",
-        "128": "images/net.png"
-      }
+  "manifest_version": 3,
+  "name": "NetSuite SuiteQL Runner",
+  "version": "1.0",
+  "permissions": ["activeTab", "scripting", "webNavigation"],
+  "host_permissions": [
+    "*://*.netsuite.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.netsuite.com/*"],
+      "js": ["content.js"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "injectedScript.js",
+        "libs/jspdf.umd.min.js",
+        "libs/jspdf.plugin.autotable.min.js",
+        "libs/chart.min.js"
+      ],
+      "matches": ["*://*.netsuite.com/*"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "images/net.png",
+      "48": "images/net.png",
+      "128": "images/net.png"
     }
   }
-  
+}
