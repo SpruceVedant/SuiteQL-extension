@@ -84,7 +84,7 @@
                     url: 'https://blueflamelabs-7d-dev-ed.develop.my.salesforce.com/services/data/v61.0/sobjects/Account/',
                     body: JSON.stringify(customerData),
                     headers: {
-                        'Authorization': 'Bearer 00D5g00000LNAsc!AR0AQD0EscMqthkO3kScfTVhs6vSuFzur9cA_RCKG5QpCQQwWTRJpxYj2jWncf2th_qNvs9Q81H5OBjv4TJ.OwvrwnAHX2dL',
+                        'Authorization': 'Bearer ',
                         'Content-Type': 'application/json'
                     }
                 });
@@ -134,7 +134,7 @@
                     fieldValues[fieldId] = objRecord.getValue({ fieldId });
                 });
 
-                // Open a new window to display the results and allow navigation
+                // Opening a new window to display the results and allow navigation
                 openResultsInNewWindow(fieldValues);
                 window.postMessage({type: 'FIELDS_FETCHED',text: 'Fields successfully fetched.' }, '*');
 
@@ -180,7 +180,7 @@
         return { recordId, recordType };
     }
 
-    // Function to open a new window, display the results, and allow navigation to field configuration
+    // Function to open a new window, display the results, and allowing navigation to field configuration
     function openResultsInNewWindow(fieldValues) {
         const newWindow = window.open('', '_blank', 'width=800,height=600');
         const doc = newWindow.document;
@@ -243,11 +243,10 @@
 
     // Function to construct the URL for navigating to the field's configuration page
     function getFieldConfigurationUrl(fieldId) {
-        // Modify this logic based on how you determine field types
         return `https://td2929968.app.netsuite.com/app/common/custom/bodycustfield.nl?id=${fieldId}&e=T`;
     }
 
-    // Injects a script to hide the loader directly in the DOM
+    // Injecting a script to hide the loader directly in the DOM(may not work)
     function injectHideLoaderScript() {
         const scriptContent = `
             (function() {
