@@ -41,9 +41,3 @@ function addCustomButton() {
     }
 }
 
-
-if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    addCustomButton();
-} else {
-    window.addEventListener('load', addCustomButton); 
-}
