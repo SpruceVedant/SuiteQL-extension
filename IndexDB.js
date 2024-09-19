@@ -102,12 +102,3 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 });
-
-
-
-chrome.runtime.onInstalled.addListener(() => {
-    initDB().then((db) => {
-      
-        addData(db, { name: 'Background Data', email: 'background@example.com' });
-    });
-});
