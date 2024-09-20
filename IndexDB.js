@@ -81,8 +81,6 @@ initDB().then((db) => {
     });
 });
 
-
-
 document.addEventListener('DOMContentLoaded', function () {
     
     initDB().then((db) => {
