@@ -91,12 +91,3 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('emailField').value = data.email;
             }
         });
-
-        
-        document.getElementById('saveBtn').addEventListener('click', function () {
-            const name = document.getElementById('nameField').value;
-            const email = document.getElementById('emailField').value;
-            addData(db, { name, email });
-        });
-    });
-});
