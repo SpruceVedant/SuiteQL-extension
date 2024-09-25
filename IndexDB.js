@@ -80,17 +80,3 @@ initDB().then((db) => {
         }
     });
 });
-
-document.addEventListener('DOMContentLoaded', function () {
-    
-    initDB().then((db) => {
-      
-        getData(db, 1).then((data) => {
-            if (data) {
-                document.getElementById('nameField').value = data.name;
-                document.getElementById('emailField').value = data.email;
-            }
-        });
-
-
-
