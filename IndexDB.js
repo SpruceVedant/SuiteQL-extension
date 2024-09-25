@@ -93,13 +93,4 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
 
-        document.addEventListener('DOMContentLoaded', function () {
-    
-    initDB().then((db) => {
-      
-        postData(db, 1).then((data) => {
-            if (data) {
-                document.getElementById('nameField').value = data.name;
-                document.getElementById('emailField').value = data.email;
-            }
-        });
+
