@@ -63,11 +63,4 @@ function getData(db, id) {
                 console.log('No data found');
                 resolve(null);
             }
-        };
-
-        request.onerror = function (event) {
-            console.error('Error retrieving data:', event.target.errorCode);
-            reject(event.target.errorCode);
-        };
-    });
-}
+        }
