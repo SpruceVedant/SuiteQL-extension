@@ -71,12 +71,3 @@ function getData(db, id) {
         };
     });
 }
-
-
-initDB().then((db) => {
-    getData(db, 1).then((data) => {
-        if (data) {
-            console.log('Data:', data);
-        }
-    });
-});
