@@ -43,8 +43,3 @@ function addData(db, data) {
         };
     });
 }
-
-
-initDB().then((db) => {
-    addData(db, { name: 'John Doe', email: 'john@example.com' });
-});
