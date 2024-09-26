@@ -48,19 +48,3 @@ function addData(db, data) {
 initDB().then((db) => {
     addData(db, { name: 'John Doe', email: 'john@example.com' });
 });
-
-function getData(db, id) {
-    return new Promise((resolve, reject) => {
-        const transaction = db.transaction(['myObjectStore'], 'readonly');
-        const objectStore = transaction.objectStore('myObjectStore');
-        const request = objectStore.get(id);
-
-        request.onsuccess = function (event) {
-            if (request.result) {
-                console.log('Data retrieved:', request.result);
-                resolve(request.result);
-            } else {
-                console.log('No data found');
-                resolve(null);
-            }
-        }
