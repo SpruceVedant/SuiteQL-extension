@@ -748,7 +748,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     }
     };
-    
     function openResultsInNewTab(results) {
     
     chrome.tabs.create({ url: 'results.html' }, function (tab) {
