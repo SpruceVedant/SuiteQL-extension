@@ -86,7 +86,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const recordId = prompt("Enter the Record ID to fetch hierarchy:");
         if (recordId) {
             showLoader();
-    
             // Send message to fetch hierarchy for the given record ID
             chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
                 const activeTab = tabs[0];
@@ -105,7 +104,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     });
-    
     // Listen for hierarchy results from injected script
     window.addEventListener('message', function(event) {
         if (event.data.type === 'HIERARCHY_RESULT') {
