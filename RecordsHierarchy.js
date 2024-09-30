@@ -14,8 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("Current Query Text:", queryText);
     
         
-        const isAfterSelect = queryText.startsWith('SELECT ') || queryText.startsWith('SELECT');
-        const isAfterFrom = queryText.includes(' FROM ');
+        // const isAfterSelect = queryText.startsWith('SELECT ') || queryText.startsWith('SELECT');
+        // const isAfterFrom = queryText.includes(' FROM ');
     
         console.log("isAfterSelect:", isAfterSelect, "isAfterFrom:", isAfterFrom); 
     
