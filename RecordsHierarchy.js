@@ -748,12 +748,12 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     function openResultsInNewTab(results) {
     
-    chrome.tabs.create({ url: 'results.html' }, function (tab) {
+    // chrome.tabs.create({ url: 'results.html' }, function (tab) {
      
-        chrome.tabs.onUpdated.addListener(function(tabId, changeInfo, tabInfo) {
-            if (tabId === tab.id && changeInfo.status === 'complete') {
-                chrome.tabs.sendMessage(tab.id, { type: 'QUERY_RESULTS', data: results });
-            }
-        });
-    });
-    }
+    //     chrome.tabs.onUpdated.addListener(function(tabId, changeInfo, tabInfo) {
+    //         if (tabId === tab.id && changeInfo.status === 'complete') {
+    //             chrome.tabs.sendMessage(tab.id, { type: 'QUERY_RESULTS', data: results });
+    //         }
+    //     });
+    // });
+    // }
