@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // const isAfterSelect = queryText.startsWith('SELECT ') || queryText.startsWith('SELECT');
         // const isAfterFrom = queryText.includes(' FROM ');
     
-        console.log("isAfterSelect:", isAfterSelect, "isAfterFrom:", isAfterFrom); 
+        // console.log("isAfterSelect:", isAfterSelect, "isAfterFrom:", isAfterFrom); 
     
         let suggestions = [];
         let lastWord = queryText.split(' ').pop();
