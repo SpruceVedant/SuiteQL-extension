@@ -204,15 +204,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    document.getElementById('runScript').addEventListener('click', () => {
-        const script = document.getElementById('scriptSelect').value;
-        if (script) {
-            if (script === 'checkUnappliedPayments') {
-                showLoader(); 
-                runUnappliedPaymentsCheck();
-            }
-        }
-    });
+    // document.getElementById('runScript').addEventListener('click', () => {
+    //     const script = document.getElementById('scriptSelect').value;
+    //     if (script) {
+    //         if (script === 'checkUnappliedPayments') {
+    //             showLoader(); 
+    //             runUnappliedPaymentsCheck();
+    //         }
+    //     }
+    // });
     
     // Salesforce integration event listener for syncing customer to as an account in Salesforce, 
     document.getElementById('sendToSalesforce').addEventListener('click', () => {
