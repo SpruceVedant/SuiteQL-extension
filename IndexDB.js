@@ -24,8 +24,6 @@ function initDB() {
         };
     });
 }
-
-
 function addData(db, data) {
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(['myObjectStore'], 'readwrite');
