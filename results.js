@@ -1,8 +1,27 @@
+let accountId = '';
+
+chrome.runtime.sendMessage({ type: 'GET_ACCOUNT_ID' }, (response) => {
+    accountId = response.accountId;
+    if (accountId) {
+        console.log('Account ID retrieved from background script:', accountId);
+        initializePage();
+    } else {
+        console.error('Account ID is not available.');
+    }
+});
+
+function initializePage() {
+ 
+    displayResults(currentPage);
+    setupSearch(filteredResults);
+    setupPagination(filteredResults);
+    setupExportButtons(filteredResults);
+}
 let currentPage = 1;
-let rowsPerPage = 10; // Default rows per page
+let rowsPerPage = 10; 
 let filteredResults = [];
 
-// Event listener for dropdown to select rows per page
+
 const rowsPerPageSelect = document.getElementById('rowsPerPage');
 if (rowsPerPageSelect) {
     rowsPerPageSelect.addEventListener('change', (event) => {
@@ -23,7 +42,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         displayResults(currentPage);
         setupSearch(results);
         setupPagination(results);
-        setupExportButtons(results);  // Set up the export buttons
+        displayResultCount(filteredResults.length);
+        setupExportButtons(results);  
         sendResponse({ status: 'success' });
     }
     if (message.type === 'ACCOUNT_ID') {
@@ -32,54 +52,55 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 });
 
-// Fetching accountId from IndexedDB
-function getFromIndexedDB(key) {
-    return new Promise((resolve, reject) => {
-        openIndexedDB().then((db) => {
-            const transaction = db.transaction('settings', 'readonly');
-            const store = transaction.objectStore('settings');
-            const request = store.get(key);
-            request.onsuccess = (event) => {
-                if (event.target.result) {
-                    resolve(event.target.result.value);
-                } else {
-                    reject(`No data found for ${key}`);
-                }
-            };
-            request.onerror = () => reject('Error retrieving data from IndexedDB');
-        });
-    });
-}
 
-function openIndexedDB() {
-    return new Promise((resolve, reject) => {
-        const request = indexedDB.open('MyExtensionDB', 1);
-        request.onupgradeneeded = function(event) {
-            const db = event.target.result;
-            if (!db.objectStoreNames.contains('settings')) {
-                db.createObjectStore('settings', { keyPath: 'key' });
-            }
-        };
-        request.onsuccess = function(event) {
-            resolve(event.target.result);
-        };
-        request.onerror = function(event) {
-            reject('Error opening IndexedDB');
-        };
-    });
-}
+// // Fetching accountId from IndexedDB
+// function getFromIndexedDB(key) {
+//     return new Promise((resolve, reject) => {
+//         openIndexedDB().then((db) => {
+//             const transaction = db.transaction('settings', 'readonly');
+//             const store = transaction.objectStore('settings');
+//             const request = store.get(key);
+//             request.onsuccess = (event) => {
+//                 if (event.target.result) {
+//                     resolve(event.target.result.value);
+//                 } else {
+//                     reject(`No data found for ${key}`);
+//                 }
+//             };
+//             request.onerror = () => reject('Error retrieving data from IndexedDB');
+//         });
+//     });
+// }
 
-let accountId = '';
-getFromIndexedDB('accountId').then((id) => {
-    accountId = id;
-    console.log('Account ID retrieved from IndexedDB:', accountId);
-}).catch((error) => {
-    console.error(error);
-});
+// function openIndexedDB() {
+//     return new Promise((resolve, reject) => {
+//         const request = indexedDB.open('MyExtensionDB', 1);
+//         request.onupgradeneeded = function(event) {
+//             const db = event.target.result;
+//             if (!db.objectStoreNames.contains('settings')) {
+//                 db.createObjectStore('settings', { keyPath: 'key' });
+//             }
+//         };
+//         request.onsuccess = function(event) {
+//             resolve(event.target.result);
+//         };
+//         request.onerror = function(event) {
+//             reject('Error opening IndexedDB');
+//         };
+//     });
+// }
+
+// let accountId = '';
+// getFromIndexedDB('accountId').then((id) => {
+//     accountId = id;
+//     console.log('Account ID retrieved from IndexedDB:', accountId);
+// }).catch((error) => {
+//     console.error(error);
+// });
 
 function displayResults(page) {
     const table = document.getElementById('resultsTable');
-    table.innerHTML = '';  // Clear the table
+    table.innerHTML = '';  
 
     if (filteredResults.length === 0) {
         table.innerHTML = '<tr><td>No results found</td></tr>';
@@ -124,13 +145,26 @@ function displayResults(page) {
         table.appendChild(row);
     });
 }
+function displayJSON(data) {
+    const jsonViewer = new JSONViewer();
+    const jsonContainer = document.getElementById('jsonContainer');
+    jsonContainer.innerHTML = ''; // Clear previous JSON data
+    jsonContainer.appendChild(jsonViewer.getContainer());
+    jsonViewer.showJSON(data, null, 2);
+}
 
+document.getElementById('viewJSON').addEventListener('click', () => {
+    document.getElementById('resultsTable').style.display = 'none';
+    document.getElementById('jsonContainer').style.display = 'block';
+    displayJSON(filteredResults); // Display your JSON data
+});
 function getRecordType(result) {
     return result['type'] || 'customer';
 }
 
 function generateNetSuiteLink(id, recordType) {
-    const baseUrl = `https://${accountId}.app.netsuite.com/app`;
+    console.log(accountId);
+    const baseUrl = "https://"+accountId+".app.netsuite.com/app";
     let url = '';
 
     switch (recordType) {
@@ -159,7 +193,7 @@ function generateNetSuiteLink(id, recordType) {
 function setupPagination(results) {
     const totalPages = Math.ceil(results.length / rowsPerPage);
     const pagination = document.getElementById('pagination');
-    pagination.innerHTML = '';  // Clear pagination controls
+    pagination.innerHTML = '';  
 
     for (let i = 1; i <= totalPages; i++) {
         const pageButton = document.createElement('button');
@@ -174,6 +208,15 @@ function setupPagination(results) {
             setupPagination(filteredResults);
         });
         pagination.appendChild(pageButton);
+    }
+}
+
+function displayResultCount(count) {
+    const resultCountElement = document.getElementById('resultCount');
+    if (resultCountElement) {
+        resultCountElement.textContent = `Total Results: ${count}`;
+    } else {
+        console.error('Result count element not found.');
     }
 }
 
