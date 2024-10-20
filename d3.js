@@ -19,17 +19,6 @@ function displayTreeView(data) {
 
     treemap(root);
 
-    const link = svg.selectAll(".link")
-        .data(root.descendants().slice(1))
-        .enter().append("path")
-        .attr("class", "link")
-        .attr("d", d => `
-            M${d.y},${d.x}
-            C${(d.y + d.parent.y) / 2},${d.x}
-             ${(d.y + d.parent.y) / 2},${d.parent.x}
-             ${d.parent.y},${d.parent.x}
-        `);
-
     const node = svg.selectAll(".node")
         .data(root.descendants())
         .enter().append("g")
