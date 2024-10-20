@@ -18,19 +18,6 @@ function displayTreeView(data) {
     const root = d3.hierarchy(treeData);
 
     treemap(root);
-
-    const node = svg.selectAll(".node")
-        .data(root.descendants())
-        .enter().append("g")
-        .attr("class", d => "node" + (d.children ? " node--internal" : " node--leaf"))
-        .attr("transform", d => "translate(" + d.y + "," + d.x + ")");
-
-    node.append("circle").attr("r", 10);
-    node.append("text")
-        .attr("dy", ".35em")
-        .attr("x", d => d.children ? -13 : 13)
-        .style("text-anchor", d => d.children ? "end" : "start")
-        .text(d => d.data.name);
 }
 
 function formatDataAsTree(data) {
