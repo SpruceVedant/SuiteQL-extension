@@ -1,6 +1,6 @@
 function displayTreeView(data) {
     const jsonContainer = document.getElementById('jsonContainer');
-    jsonContainer.innerHTML = ''; // Clear previous tree
+    jsonContainer.innerHTML = ''; 
 
     const treeData = formatDataAsTree(data);
 
@@ -14,7 +14,7 @@ function displayTreeView(data) {
         .append("g")
         .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
-    const treemap = d3.tree().size([height, width]);
+   
     const root = d3.hierarchy(treeData);
 
     treemap(root);
