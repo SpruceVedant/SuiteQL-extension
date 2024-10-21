@@ -25,16 +25,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const thead = document.createElement('thead');
             const headerRow = document.createElement('tr');
            
-            ['Transaction ID', 'Total'].forEach(header => {
-                const th = document.createElement('th');
-                th.style.border = '1px solid #ddd';
-                th.style.padding = '8px';
-                th.style.backgroundColor = '#007bff';
-                th.style.color = 'white';
-                th.textContent = header;
-                headerRow.appendChild(th);
-            });
-
             thead.appendChild(headerRow);
             table.appendChild(thead);
 
