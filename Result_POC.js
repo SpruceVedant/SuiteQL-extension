@@ -17,6 +17,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     chrome.tabs.onUpdated.removeListener(listener);
                 }
             });
+            function resultsinnewTab() {
+                 url: chrome.runtime.getURL('results.html'),
+            }
         });
     }
 });
