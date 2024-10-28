@@ -8,6 +8,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             height: 400
         }, function(window) {
             const newTabId = window.tabs[0].id;
+            resultsinnewTab(newTabId);
 
             chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
                 if (tabId === newTabId && info.status === 'complete') {
