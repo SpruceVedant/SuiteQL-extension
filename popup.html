@@ -23,6 +23,7 @@
             width: 600px;
             padding: 15px;
             background-color: #f4f4f4;
+            /* background-image: url('https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT2elvCXvR8Frj4K4rqGvIlShArz-j1Bi32Zw&s'); */
             border-radius: 8px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
         }
@@ -60,7 +61,7 @@
             padding: 10px;
             border: none;
             border-radius: 5px;
-            background-color: #007bff;
+            background-color: #000000;
             color: white;
             font-size: 14px;
             cursor: pointer;
@@ -75,7 +76,7 @@
         /* Dropdown and Label Styling */
         label {
             font-size: 14px;
-            color: #333;
+            color: #000000;
             margin-bottom: 5px;
             display: block;
         }
@@ -154,8 +155,8 @@
         .footer {
             margin-top: 10px;
             text-align: center;
-            font-size: 12px;
-            color: #888;
+            font-size: 18px;
+            color: #060606;
         }
 
         .footer a {
@@ -199,6 +200,32 @@
             margin-bottom: 10px;
             font-size: 14px;
         }
+
+        .suggestions-box {
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        max-height: 150px;
+        overflow-y: auto;
+        background-color: #fff;
+        position: absolute;
+        width: calc(100% - 30px);
+        z-index: 999;
+        display: none;
+    }
+
+    .suggestions-box div {
+        padding: 8px;
+        cursor: pointer;
+    }
+
+    .suggestions-box div:hover {
+        background-color: #e0e0e0;
+    }
+
+    /* Adjust position relative to container */
+    #container {
+        position: relative;
+    }
     </style>
 </head>
 
@@ -213,6 +240,7 @@
 
         <label for="query">Enter your SuiteQL query:</label>
         <textarea id="query" placeholder="Enter your SuiteQL query here"></textarea>
+        <div id="suggestions" class="suggestions-box"></div>
 
         <button id="runQuery">Run Query</button>
 
@@ -229,7 +257,10 @@
             </select>
             <button id="runScript">Run Task</button>
         </div>
-
+        <div id="emailContainer" style="display: none;">
+            <label for="emailInput">Enter Email for Unapplied Payments:</label>
+            <input type="email" id="emailInput" placeholder="Enter email address">
+        </div>
         <!-- Salesforce Integration Section -->
         <div class="integration-section">
             <label for="customerId">Enter Customer ID to Send to Salesforce:</label>
@@ -238,23 +269,46 @@
         </div>
 
         <!-- File Search Section -->
-        <div class="file-search-section">
+        <!-- <div class="file-search-section">
             <label for="fileNameInput">Enter File Name to Search:</label>
             <input type="text" id="fileNameInput" placeholder="Enter File Name">
             <button id="searchFileButton">Search File</button>
-        </div>
+        </div> -->
 
         <div class="fetch-fields-section">
             <button id="fetchFields">Fetch All Fields from Current Record</button>
         </div>
+        <h1>Fetch Record Hierarchy</h1>
+        <input type="text" id="recordId" placeholder="Enter Record ID">
+        <button id="fetchHierarchy">Fetch Hierarchy</button>
+      
+        <script src="popup.js"></script>
+        <div id="shortcuts">
+            <!-- <h3>Keyboard Shortcuts</h3>
+            <label for="salesOrderShortcut">Sales Order:</label>
+            <input type="text" id="salesOrderShortcut" placeholder="Alt+S">
+            
+            <label for="invoiceShortcut">Invoices:</label>
+            <input type="text" id="invoiceShortcut" placeholder="Alt+I">
+            
+            <label for="purchaseOrderShortcut">Purchase Orders:</label>
+            <input type="text" id="purchaseOrderShortcut" placeholder="Alt+P">
+            
+            <label for="customersShortcut">Customers:</label>
+            <input type="text" id="customersShortcut" placeholder="Alt+C">
+        
+            <button id="saveShortcuts">Save Shortcuts</button> -->
+        </div>
+        
 
         <pre id="output"></pre>
-
+        <textarea id="suiteScriptInput" placeholder="Enter SuiteScript to run..."></textarea>
+        <button id="runSuiteScript">Run Script</button>
         <div id="loader"></div>
         <div id="errorBox"></div>
 
         <div class="footer">
-            <p>Powered by NetSuite</p>
+            <p>Empowering NetSuite users, one click at a time 👆✨ <br> Crafted  by Vedant <br>Powered by NetSuite</p>
             <p>Need help? <a href="https://suiteanswers.custhelp.com/app/home" target="_blank">Visit SuiteAnswers</a></p>
         </div>
     </div>
