@@ -1,6 +1,6 @@
 (function() {
     console.log('Injected script is running.');
-
+    require(['N/record', 'N/search', 'N/https', 'N/email', 'N/runtime', 'N/log'], function(record, search, https, email, runtime, log) {
     // Function to execute SuiteQL Query
     function executeSuiteQLQuery(query) {
         console.log('Attempting to run query:', query);
@@ -84,7 +84,7 @@
                     url: 'https://blueflamelabs-7d-dev-ed.develop.my.salesforce.com/services/data/v61.0/sobjects/Account/',
                     body: JSON.stringify(customerData),
                     headers: {
-                        'Authorization': 'Bearer ',
+                        'Authorization': 'Bearer 00D5g00000LNAsc!AR0AQBm3DfrqLbN.EwsoBe8mPJcUOYkRlh8oBU6b3XqDHwjdhA0CqO4OVbG9l9OtL7g.IclatEMkU4suSgvph3EAWfGYmsV1',
                         'Content-Type': 'application/json'
                     }
                 });
@@ -134,7 +134,7 @@
                     fieldValues[fieldId] = objRecord.getValue({ fieldId });
                 });
 
-                // Opening a new window to display the results and allow navigation
+                // Open a new window to display the results and allow navigation
                 openResultsInNewWindow(fieldValues);
                 window.postMessage({type: 'FIELDS_FETCHED',text: 'Fields successfully fetched.' }, '*');
 
@@ -145,9 +145,46 @@
         });
     }
 
+    function fetchRecordHierarchy(recordId) {
+        require(['N/query'], function (query) {
+          const suiteQL = `
+            SELECT 
+              so.id AS "Sales Order ID", 
+              so.tranid AS "Sales Order Number",
+              BUILTIN.DF(so.entity) AS "Customer Name",
+              inv.id AS "Invoice ID", 
+              inv.tranid AS "Invoice Number",
+              BUILTIN.DF(subsidiary) AS "Customer Subsidiary",
+              BUILTIN.DF(soline.item) AS "Item Name",
+              BUILTIN.DF(soline.quantity) AS "Quantity",
+              soline.rate AS "Rate",
+              (soline.rate * soline.quantity) AS "Calculated Amount"
+            FROM 
+              Transaction so
+            LEFT JOIN 
+              NextTransactionLink ntl ON ntl.previousdoc = so.id
+            LEFT JOIN 
+              Transaction inv ON inv.id = ntl.nextdoc
+            LEFT JOIN 
+              TransactionLine soline ON soline.transaction = so.id
+            WHERE 
+              so.type = 'SalesOrd'
+              AND so.id = ${recordId}`;
+          console.log(suiteQL);
+          const resultSet = query.runSuiteQL({ query: suiteQL });
+          const results = resultSet.asMappedResults();
+          console.log(results);
+    
+          // Send the results back to the content script
+          window.postMessage({ type: 'HIERARCHY_RESULT', hierarchy: results }, '*');
+        });
+      }
+
     // Function to extract recordId and recordType from the URL
     function getRecordDetailsFromUrl(record) {
         const urlParams = new URLSearchParams(window.location.search);
+        var accountValue = window.location.hostname.split('.')[0];
+        console.log(accountValue)
         const recordId = urlParams.get('id');
         console.log('Record ID:', recordId);
 
@@ -179,8 +216,25 @@
 
         return { recordId, recordType };
     }
+    function executeCustomScript(userScript) {
+        console.log('Received user script:', userScript);
 
-    // Function to open a new window, display the results, and allowing navigation to field configuration
+        try {
+           
+            const result = (function(record, search, https, email, runtime, log) {
+                return eval(userScript);  
+            })(record, search, https, email, runtime, log);
+
+            console.log('Script executed successfully:', result);
+
+         
+            window.postMessage({ type: 'CUSTOM_SCRIPT_RESULT', result: result }, '*');
+        } catch (error) {
+            console.error('Error executing custom script:', error);
+            window.postMessage({ type: 'CUSTOM_SCRIPT_RESULT', result: 'Error: ' + error.message }, '*');
+        }
+    }
+    // Function to open a new window, display the results, and allow navigation to field configuration
     function openResultsInNewWindow(fieldValues) {
         const newWindow = window.open('', '_blank', 'width=800,height=600');
         const doc = newWindow.document;
@@ -246,7 +300,7 @@
         return `https://td2929968.app.netsuite.com/app/common/custom/bodycustfield.nl?id=${fieldId}&e=T`;
     }
 
-    // Injecting a script to hide the loader directly in the DOM(may not work)
+    // Injects a script to hide the loader directly in the DOM
     function injectHideLoaderScript() {
         const scriptContent = `
             (function() {
@@ -280,9 +334,16 @@
             } else if (event.data.type === 'FETCH_ALL_FIELDS') {
                 console.log('Fetching all fields from the current record.');
                 fetchAllFields();
+            } else if (event.data.type === 'FETCH_HIERARCHY') {
+                const recordId = event.data.recordId;
+          
+                // Call the SuiteQL query to get the hierarchy data
+                fetchRecordHierarchy(recordId);
+              }else if (event.data.type === 'RUN_CUSTOM_SCRIPT') {
+                executeCustomScript(event.data.script); // Run the user’s script
             }
         }
     });
-
+    });
     console.log('Waiting for queries or script triggers...');
 })();
