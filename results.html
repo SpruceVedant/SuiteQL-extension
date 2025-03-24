@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="libs/jsoneditor.css">
+    <script src="libs/d3.js"></script>
+    <title>Query Results</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #007bff;
+            color: white;
+        }
+        #pagination {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .pagination-button {
+            padding: 5px 10px;
+            margin: 0 5px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .pagination-button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <h2>Query Results</h2>
+    <input type="text" id="searchInput" placeholder="Search..." style="width: 100%; padding: 8px; margin-bottom: 20px;" />
+    
+    <!-- Export Buttons -->
+    <button id="exportToCSV">Export to CSV</button>
+    <button id="exportToExcel">Export to Excel</button>
+    <label for="rowsPerPage">Rows per page:</label>
+    
+    <select id="rowsPerPage">
+        <option value="5">5</option>
+        <option value="10" selected>10</option>
+        <option value="20">20</option>
+        <option value="50">50</option>
+    </select>
+    <div id="resultCount">Total Results: 0</div>
+<!-- <table id="resultsTable"></table> -->
+    <table id="resultsTable"></table>
+    <button id="viewTable">Table View</button>
+<button id="viewJSON">JSON View</button>
+<div id="jsonContainer" style="display: none;"></div>
+<button id="viewTree">Tree View</button>
+<table id="resultsTable"></table>
+    <div id="pagination"></div>
+    
+    <script src="results.js"></script>
+</body>
+</html>
