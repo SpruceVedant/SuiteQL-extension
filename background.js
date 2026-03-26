@@ -1,86 +1,115 @@
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === 'runSuiteQL') {
-        const { query, config } = message;
+let accountId = '';
+const rememberedPanelTabs = new Set();
 
-        runSuiteQL(query, config)
-            .then(result => sendResponse({ result }))
-            .catch(error => sendResponse({ error: error.message }));
+function isNetSuiteUrl(url = '') {
+    return /^https:\/\/([^.]+\.)*(app\.)?netsuite\.com\//i.test(url);
+}
 
-        return true; // Keeping the message channel open for async response
+async function configureSidePanelBehavior() {
+    try {
+        await chrome.sidePanel.setPanelBehavior({
+            openPanelOnActionClick: true
+        });
+    } catch (error) {
+        console.error('Failed to configure side panel behavior.', error);
+    }
+}
+
+configureSidePanelBehavior();
+
+chrome.runtime.onInstalled.addListener(() => {
+    configureSidePanelBehavior();
+});
+
+chrome.runtime.onStartup.addListener(() => {
+    configureSidePanelBehavior();
+});
+
+async function syncTabSidePanel(tabId, url) {
+    if (!tabId) {
+        return;
+    }
+
+    try {
+        await chrome.sidePanel.setOptions({
+            tabId,
+            path: 'popup.html',
+            enabled: isNetSuiteUrl(url || '')
+        });
+    } catch (error) {
+        console.error('Failed to sync side panel for tab.', error);
+    }
+}
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    const url = changeInfo.url || tab.url || '';
+    if (!url) {
+        return;
+    }
+
+    syncTabSidePanel(tabId, url);
+});
+
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+    try {
+        const tab = await chrome.tabs.get(tabId);
+        await syncTabSidePanel(tabId, tab.url || '');
+
+        if (!tab.windowId) {
+            return;
+        }
+
+        if (!isNetSuiteUrl(tab.url || '')) {
+            await chrome.sidePanel.close({ windowId: tab.windowId });
+            return;
+        }
+
+        if (rememberedPanelTabs.has(tabId)) {
+            await chrome.sidePanel.open({ windowId: tab.windowId });
+        }
+    } catch (error) {
+        console.error('Failed to update side panel on tab activation.', error);
     }
 });
 
-async function runSuiteQL(query, config) {
-    const { ACCOUNT_ID, CONSUMER_KEY, CONSUMER_SECRET, TOKEN_ID, TOKEN_SECRET } = config;
-    
-    //proxy server
-    const proxyUrl = 'http://localhost:8080/';  
-    const targetUrl = 'https://' + ACCOUNT_ID.toLowerCase() + '.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql';
-    const fullUrl = proxyUrl + targetUrl;
-
-    const method = 'POST';
-    const nonce = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join('');
-    const timestamp = Math.floor(Date.now() / 1000);
-    const params = {
-        oauth_consumer_key: CONSUMER_KEY,
-        oauth_token: TOKEN_ID,
-        oauth_signature_method: 'HMAC-SHA256',
-        oauth_timestamp: timestamp,
-        oauth_nonce: nonce,
-        oauth_version: '1.0'
-    };
-
-    const signature = await generateOAuthSignature(method, targetUrl, params, CONSUMER_SECRET, TOKEN_SECRET);
-    params.oauth_signature = signature;
-
-    const authHeader = 'OAuth realm="' + ACCOUNT_ID + '",oauth_consumer_key="' + CONSUMER_KEY + '",oauth_token="' + TOKEN_ID + '",oauth_signature_method="HMAC-SHA256",oauth_timestamp="' + timestamp + '",oauth_nonce="' + nonce + '",oauth_version="1.0",oauth_signature="' + encodeURIComponent(signature) + '"';
-
+async function initializeExistingTabs() {
     try {
-        const response = await fetch(fullUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'prefer': 'transient',
-                'Authorization': authHeader,
-                'Origin': 'chrome-extension://cghklponalpbbhlaljooboodmbbeohgd',
-                'X-Requested-With': 'XMLHttpRequest' 
-            },
-            body: JSON.stringify({ q: query })
-        });
-
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-
-        return await response.json();
+        const tabs = await chrome.tabs.query({});
+        await Promise.all(
+            tabs
+                .filter((tab) => tab.id)
+                .map((tab) => syncTabSidePanel(tab.id, tab.url || ''))
+        );
     } catch (error) {
-        throw new Error('Error running SuiteQL query: ' + error.message);
+        console.error('Failed to initialize side panel state for existing tabs.', error);
     }
 }
 
-async function generateOAuthSignature(method, url, params, consumerSecret, tokenSecret) {
-    const sortedParams = Object.keys(params).sort().map(key => `${key}=${encodeURIComponent(params[key])}`).join('&');
-    const baseString = method.toUpperCase() + '&' + encodeURIComponent(url) + '&' + encodeURIComponent(sortedParams);
-    const signingKey = encodeURIComponent(consumerSecret) + '&' + encodeURIComponent(tokenSecret);
+initializeExistingTabs();
 
-    console.log('Base String:', baseString);
-    console.log('Signing Key:', signingKey);
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'SIDE_PANEL_OPENED') {
+        if (message.tabId && isNetSuiteUrl(message.url || '')) {
+            rememberedPanelTabs.add(message.tabId);
+        }
+        sendResponse({ status: 'Side panel tab remembered' });
+        return;
+    }
 
-    const keyData = new TextEncoder().encode(signingKey);
-    const baseStringData = new TextEncoder().encode(baseString);
+    if (message.type === 'ACCOUNT_ID') {
+        accountId = message.accountId;
+        console.log('Account ID stored in background script:', accountId);
+        sendResponse({ status: 'Account ID saved' });
+        return;
+    }
 
-    const cryptoKey = await crypto.subtle.importKey(
-        "raw",
-        keyData,
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"]
-    );
+    if (message.type === 'GET_ACCOUNT_ID') {
+        sendResponse({ accountId });
+        return;
+    }
 
-    const signature = await crypto.subtle.sign("HMAC", cryptoKey, baseStringData);
-    const encodedSignature = btoa(String.fromCharCode(...new Uint8Array(signature)));
-
-    console.log('Generated Signature:', encodedSignature);
-
-    return encodedSignature;
-}
+    if (message.type === 'SCRIPT_RESULT') {
+        console.log('Script result received in background:', message.result);
+        chrome.runtime.sendMessage({ type: 'DISPLAY_RESULT', result: message.result });
+    }
+});
