@@ -1,9 +1,9 @@
 (function() {
-    console.log('Injected script is running.');
-
+    // console.log('Injected script is running.');
+    require(['N/record', 'N/search', 'N/https', 'N/email', 'N/runtime', 'N/log'], function(record, search, https, email, runtime, log) {
     // Function to execute SuiteQL Query
     function executeSuiteQLQuery(query) {
-        console.log('Attempting to run query:', query);
+        // console.log('Attempting to run query:', query);
 
         require(['N/query'], function(queryModule) {
             try {
@@ -11,7 +11,7 @@
                 const resultSet = queryModule.runSuiteQL({ query: query });
                 const results = resultSet.asMappedResults();
 
-                console.log('Query Results:', results);
+                // console.log('Query Results:', results);
 
                 window.postMessage({ type: 'FROM_PAGE', text: JSON.stringify(results) }, '*');
             } catch (error) {
@@ -62,59 +62,14 @@
         });
     }
 
-    // Function to send a customer record to Salesforce
-    function sendCustomerToSalesforce(customerId) {
-        console.log('Sending customer to Salesforce with ID:', customerId);
 
-        require(['N/record', 'N/https'], function(record, https) {
-            try {
-                const customerRecord = record.load({
-                    type: record.Type.CUSTOMER,
-                    id: customerId
-                });
-
-                const customerData = {
-                    Name: customerRecord.getValue({ fieldId: 'companyname' }),
-                    Phone: customerRecord.getValue({ fieldId: 'phone' }),
-                    // Email__c: customerRecord.getValue({ fieldId: 'email' }),
-                    // NetSuite_ID__c: customerId
-                };
-
-                const salesforceResponse = https.post({
-                    url: 'https://blueflamelabs-7d-dev-ed.develop.my.salesforce.com/services/data/v61.0/sobjects/Account/',
-                    body: JSON.stringify(customerData),
-                    headers: {
-                        'Authorization': 'Bearer ',
-                        'Content-Type': 'application/json'
-                    }
-                });
-
-                if (salesforceResponse.code === 200 || salesforceResponse.code === 201) {
-                    const responseData = JSON.parse(salesforceResponse.body);
-                    const salesforceAccountId = responseData.id;
-                    window.postMessage({ type: 'SALESFORCE_SUCCESS', text: 'Customer successfully sent to Salesforce.' , salesforceAccountId: salesforceAccountId}, '*');
-                    console.log('Customer synced successfuly!!', salesforceAccountId);
-                } else {
-                    window.postMessage({ type: 'SALESFORCE_ERROR', text: 'Error sending customer to Salesforce. Response: ' + salesforceResponse.body }, '*');
-                }
-                
-                injectHideLoaderScript();
-
-            } catch (error) {
-                console.error('Error sending customer to Salesforce:', error);
-                window.postMessage({ type: 'SALESFORCE_ERROR', text: 'Error: ' + error.message }, '*');
-                
-                injectHideLoaderScript();
-            }
-        });
-    }
 
     // Function to fetch all fields from the current record and display them in a new window
     function fetchAllFields() {
         require(['N/record'], function(record) {
             try {
                 const { recordId, recordType } = getRecordDetailsFromUrl(record);
-                console.log('Fetching....');
+                // console.log('Fetching....');
                 
                 if (!recordType || !recordId) {
                     throw new Error('Record type or ID could not be determined.');
@@ -134,7 +89,7 @@
                     fieldValues[fieldId] = objRecord.getValue({ fieldId });
                 });
 
-                // Opening a new window to display the results and allow navigation
+                // Open a new window to display the results and allow navigation
                 openResultsInNewWindow(fieldValues);
                 window.postMessage({type: 'FIELDS_FETCHED',text: 'Fields successfully fetched.' }, '*');
 
@@ -145,9 +100,46 @@
         });
     }
 
+    function fetchRecordHierarchy(recordId) {
+        require(['N/query'], function (query) {
+          const suiteQL = `
+            SELECT 
+              so.id AS "Sales Order ID", 
+              so.tranid AS "Sales Order Number",
+              BUILTIN.DF(so.entity) AS "Customer Name",
+              inv.id AS "Invoice ID", 
+              inv.tranid AS "Invoice Number",
+              BUILTIN.DF(subsidiary) AS "Customer Subsidiary",
+              BUILTIN.DF(soline.item) AS "Item Name",
+              BUILTIN.DF(soline.quantity) AS "Quantity",
+              soline.rate AS "Rate",
+              (soline.rate * soline.quantity) AS "Calculated Amount"
+            FROM 
+              Transaction so
+            LEFT JOIN 
+              NextTransactionLink ntl ON ntl.previousdoc = so.id
+            LEFT JOIN 
+              Transaction inv ON inv.id = ntl.nextdoc
+            LEFT JOIN 
+              TransactionLine soline ON soline.transaction = so.id
+            WHERE 
+              so.type = 'SalesOrd'
+              AND so.id = ${recordId}`;
+          console.log(suiteQL);
+          const resultSet = query.runSuiteQL({ query: suiteQL });
+          const results = resultSet.asMappedResults();
+          console.log(results);
+    
+          // Send the results back to the content script
+          window.postMessage({ type: 'HIERARCHY_RESULT', hierarchy: results }, '*');
+        });
+      }
+
     // Function to extract recordId and recordType from the URL
     function getRecordDetailsFromUrl(record) {
         const urlParams = new URLSearchParams(window.location.search);
+        var accountValue = window.location.hostname.split('.')[0];
+        console.log(accountValue)
         const recordId = urlParams.get('id');
         console.log('Record ID:', recordId);
 
@@ -179,74 +171,342 @@
 
         return { recordId, recordType };
     }
-
-    // Function to open a new window, display the results, and allowing navigation to field configuration
+    function executeCustomScript(userScript) {
+        console.log('⏳ Preparing to run custom script…');
+      
+        // Load the common NS modules
+        require([
+          'N/record','N/search','N/https','N/email','N/runtime','N/log','N/error'
+        ], function(record, search, https, email, runtime, log,  error) {
+          
+          // Build an async IIFE as a string
+          const wrapperSrc = `
+            (async function(record, search, https, email, runtime, log,  error) {
+              'use strict';
+              ${userScript}
+            })
+          `;
+      
+          let userFn;
+          try {
+            // Evaluate it directly in page context
+            // eslint-disable-next-line no-eval
+            userFn = eval(wrapperSrc);
+            if (typeof userFn !== 'function') {
+              throw new Error('Wrapper did not produce a function.');
+            }
+          } catch (compileErr) {
+            console.error('❌ Script compile error:', compileErr);
+            window.postMessage({
+              type: 'CUSTOM_SCRIPT_RESULT',
+              result: { success: false, error: compileErr.toString() }
+            }, '*');
+            return;
+          }
+      
+          // Run the user’s async function
+          userFn(record, search, https, email, runtime, log,  error)
+            .then(result => {
+              console.log('✅ Script executed successfully:', result);
+              window.postMessage({
+                type: 'CUSTOM_SCRIPT_RESULT',
+                result: { success: true, value: result }
+              }, '*');
+            })
+            .catch(runErr => {
+              console.error('❌ Script runtime error:', runErr);
+              window.postMessage({
+                type: 'CUSTOM_SCRIPT_RESULT',
+                result: { success: false, error: runErr.stack || runErr.toString() }
+              }, '*');
+            });
+        });
+      }
+      
+      
+    // Function to open a new window, display the results, and allow navigation to field configuration
     function openResultsInNewWindow(fieldValues) {
-        const newWindow = window.open('', '_blank', 'width=800,height=600');
-        const doc = newWindow.document;
-
-        doc.write('<html><head><title>Record Fields</title></head><body>');
-        doc.write('<h2>Record Fields</h2>');
-
-        const table = doc.createElement('table');
-        table.style.width = '100%';
-        table.style.borderCollapse = 'collapse';
-        table.style.border = '1px solid #ddd';
-
-        const thead = doc.createElement('thead');
-        const headerRow = doc.createElement('tr');
-        ['Field ID', 'Field Value', 'Navigate to Configuration'].forEach(header => {
-            const th = doc.createElement('th');
-            th.style.border = '1px solid #ddd';
-            th.style.padding = '8px';
-            th.style.backgroundColor = '#007bff';
-            th.style.color = 'white';
-            th.textContent = header;
-            headerRow.appendChild(th);
+      const newWin = window.open('', '_blank', 'width=900,height=700');
+      const doc = newWin.document;
+      
+      // Format values for display
+      const formatValue = (val) => {
+        if (val === null || val === undefined) return '';
+        if (typeof val === 'object') return JSON.stringify(val, null, 2);
+        return String(val);
+      };
+      
+      const rowsHtml = Object.entries(fieldValues).map(([id, val]) => {
+        const url = getFieldConfigurationUrl(id);
+        const formattedValue = formatValue(val);
+        
+        return `
+          <tr>
+            <td class="cell-id">
+              <div class="id-container">
+                <span class="id-text">${id}</span>
+              </div>
+            </td>
+            <td class="cell-val">${formattedValue}</td>
+            
+              </a>
+            </td>
+          </tr>`;
+      }).join('');
+      
+      const html = `<!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Record Fields</title>
+      <style>
+        /* Modern CSS Reset */
+        *, *::before, *::after { 
+          box-sizing: border-box; 
+          margin: 0; 
+          padding: 0; 
+        }
+        
+        /* Base Styles */
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+          background: linear-gradient(135deg, #f5f7fa 0%, #e4e8f0 100%);
+          color: #334155;
+          padding: 28px;
+          line-height: 1.5;
+          min-height: 100vh;
+        }
+        
+        /* Container & Header */
+        .container {
+          max-width: 900px;
+          margin: 0 auto;
+        }
+        
+        .header {
+          display: flex;
+          align-items: center;
+          margin-bottom: 24px;
+        }
+        
+        .header-icon {
+          font-size: 24px;
+          margin-right: 12px;
+        }
+        
+        h1 {
+          font-size: 1.75rem;
+          font-weight: 600;
+          color: #1e293b;
+          flex-grow: 1;
+        }
+        
+        /* Card Styling */
+        .card {
+          background: #fff;
+          border-radius: 12px;
+          overflow: hidden;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.05), 0 5px 10px rgba(0,0,0,0.03);
+          transition: all 0.3s ease;
+          border: 1px solid rgba(0,0,0,0.05);
+        }
+        
+        /* Table Styling */
+        table {
+          width: 100%;
+          border-collapse: separate;
+          border-spacing: 0;
+        }
+        
+        thead th {
+          position: sticky;
+          top: 0;
+          background: #0f172a;
+          color: #f8fafc;
+          text-align: left;
+          padding: 16px;
+          font-size: 0.85rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        
+        thead th:first-child {
+          border-top-left-radius: 8px;
+        }
+        
+        thead th:last-child {
+          border-top-right-radius: 8px;
+        }
+        
+        tbody tr {
+          border-bottom: 1px solid #e2e8f0;
+          transition: background 0.2s ease;
+        }
+        
+        tbody tr:hover {
+          background: #f1f5f9;
+        }
+        
+        tbody tr:last-child {
+          border-bottom: none;
+        }
+        
+        td {
+          padding: 16px;
+          vertical-align: middle;
+          font-size: 0.95rem;
+        }
+        
+        /* Cell Styling */
+        .cell-id {
+          width: 25%;
+        }
+        
+        .id-container {
+          display: inline-block;
+          background: #f1f5f9;
+          border-radius: 6px;
+          padding: 8px 12px;
+          border: 1px solid #e2e8f0;
+        }
+        
+        .id-text {
+          font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+          font-size: 0.85rem;
+          color: #334155;
+          word-break: break-all;
+        }
+        
+        .cell-val {
+          width: 55%;
+          font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+          font-size: 0.85rem;
+          white-space: pre-wrap;
+          word-break: break-word;
+          color: #475569;
+        }
+        
+        .cell-action {
+          width: 20%;
+          text-align: center;
+        }
+        
+        /* Button Styling */
+        .btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 8px 16px;
+          background: #3b82f6;
+          color: #fff;
+          text-decoration: none;
+          border-radius: 8px;
+          font-size: 0.9rem;
+          font-weight: 500;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 5px rgba(59, 130, 246, 0.3);
+        }
+        
+        .btn:hover {
+          background: #2563eb;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 8px rgba(59, 130, 246, 0.4);
+        }
+        
+        .btn:active {
+          transform: translateY(0);
+        }
+        
+        .btn-icon {
+          margin-right: 6px;
+        }
+        
+        /* Empty state */
+        .empty-table {
+          padding: 40px;
+          text-align: center;
+          color: #64748b;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+          body {
+            padding: 16px;
+          }
+          
+          .header {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          
+          .header-icon {
+            margin-bottom: 8px;
+          }
+          
+          td, th {
+            padding: 12px;
+          }
+          
+          .cell-action {
+            text-align: left;
+          }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <span class="header-icon">📋</span>
+          <h1>Record Fields</h1>
+        </div>
+        <div class="card">
+          <table>
+            <thead>
+              <tr>
+                <th>Field ID</th>
+                <th>Field Value</th>
+             
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml.length ? rowsHtml : '<tr><td colspan="3" class="empty-table">No fields found</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <script>
+        // Add animation when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+          const rows = document.querySelectorAll('tbody tr');
+          rows.forEach((row, index) => {
+            row.style.opacity = '0';
+            row.style.transform = 'translateY(10px)';
+            row.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+            
+            setTimeout(() => {
+              row.style.opacity = '1';
+              row.style.transform = 'translateY(0)';
+            }, 50 * index);
+          });
         });
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
-
-        const tbody = doc.createElement('tbody');
-        Object.entries(fieldValues).forEach(([fieldId, value]) => {
-            const row = doc.createElement('tr');
-            const tdFieldId = doc.createElement('td');
-            tdFieldId.style.border = '1px solid #ddd';
-            tdFieldId.style.padding = '8px';
-            tdFieldId.textContent = fieldId;
-            row.appendChild(tdFieldId);
-
-            const tdValue = doc.createElement('td');
-            tdValue.style.border = '1px solid #ddd';
-            tdValue.style.padding = '8px';
-            tdValue.textContent = value !== null ? value : '';
-            row.appendChild(tdValue);
-
-            const tdNavigate = doc.createElement('td');
-            const navigateLink = document.createElement('a');
-            navigateLink.textContent = 'Configure Field';
-            navigateLink.style.color = '#007bff';
-            navigateLink.style.textDecoration = 'underline';
-            navigateLink.href = getFieldConfigurationUrl(fieldId);
-            navigateLink.target = '_blank';
-            tdNavigate.appendChild(navigateLink);
-            row.appendChild(tdNavigate);
-
-            tbody.appendChild(row);
-        });
-        table.appendChild(tbody);
-
-        doc.body.appendChild(table);
-        doc.write('</body></html>');
-        doc.close();
+      </script>
+    </body>
+    </html>`;
+    
+      doc.open();
+      doc.write(html);
+      doc.close();
     }
+    
 
     // Function to construct the URL for navigating to the field's configuration page
     function getFieldConfigurationUrl(fieldId) {
-        return `https://td2929968.app.netsuite.com/app/common/custom/bodycustfield.nl?id=${fieldId}&e=T`;
+        return `https://.app.netsuite.com/app/common/custom/bodycustfield.nl?id=${fieldId}&e=T`;
     }
 
-    // Injecting a script to hide the loader directly in the DOM(may not work)
+    // Injecting a script to hide the loader directly in the DOM
     function injectHideLoaderScript() {
         const scriptContent = `
             (function() {
@@ -275,14 +535,48 @@
             } else if (event.data.type === 'SEND_TO_SALESFORCE') {
                 console.log('Received request to send customer to Salesforce.');
                 sendCustomerToSalesforce(event.data.customerId);
-                const salesforceUrl = `https://blueflamelabs-7d-dev-ed.develop.my.salesforce.com/lightning/r/Account/${salesforceAccountId}/view`;
+                const salesforceUrl = ``;
                 window.open(salesforceUrl, '_blank');
             } else if (event.data.type === 'FETCH_ALL_FIELDS') {
                 console.log('Fetching all fields from the current record.');
                 fetchAllFields();
+            } else if (event.data.type === 'FETCH_HIERARCHY') {
+                const recordId = event.data.recordId;
+          
+              
+                fetchRecordHierarchy(recordId);
+              }else if (event.data.type === 'RUN_CUSTOM_SCRIPT') {
+                executeCustomScript(event.data.script);
             }
         }
     });
+    });
+    // console.log('Waiting for queries or script triggers...');
 
-    console.log('Waiting for queries or script triggers...');
+
+    // ─────────────────────────────────────────────────
+// 1) Expose a console‐callable helper
+window.runSuiteScript = function(userScript) {
+    // forward into your existing message handler
+    window.postMessage({ type: 'RUN_CUSTOM_SCRIPT', script: userScript }, '*');
+  };
+  
+  // 2) Log the results back to the DevTools console
+  window.addEventListener('message', (event) => {
+    if (event.data.type === 'CUSTOM_SCRIPT_RESULT') {
+      const { success, value, error } = event.data.result;
+      if (success) {
+        console.log(
+          '%c[SuiteScript Success]','color:green;font-weight:bold;',
+          value
+        );
+      } else {
+        console.error(
+          '%c[SuiteScript Error]','color:red;font-weight:bold;',
+          error
+        );
+      }
+    }
+  });
+  
 })();
