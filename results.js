@@ -1,21 +1,104 @@
 let accountId = '';
+let allResults = [];
+let pageInitialized = false;
+let searchBound = false;
+let exportBound = false;
+const RESULTS_PAGE_STATES_KEY = 'suitesenseResultsPageStates';
+const resultsStateId = new URLSearchParams(window.location.search).get('state');
+const LOCAL_RESULTS_PAGE_PREFIX = 'suitesenseResultsTab:';
 
-chrome.runtime.sendMessage({ type: 'GET_ACCOUNT_ID' }, (response) => {
-    accountId = response.accountId;
-    if (accountId) {
-        console.log('Account ID retrieved from background script:', accountId);
+restoreResultsPageState().finally(() => {
+    chrome.runtime.sendMessage({ type: 'GET_ACCOUNT_ID' }, (response) => {
+        if (response && response.accountId) {
+            accountId = response.accountId;
+            console.log('Account ID retrieved from background script:', accountId);
+        }
+
         initializePage();
-    } else {
-        console.error('Account ID is not available.');
-    }
+    });
 });
 
+function getResultsStorageArea() {
+    return chrome.storage.session || chrome.storage.local;
+}
+
+function readResultsPageStates() {
+    return new Promise((resolve) => {
+        getResultsStorageArea().get({ [RESULTS_PAGE_STATES_KEY]: {} }, (items) => {
+            if (chrome.runtime.lastError) {
+                resolve({});
+                return;
+            }
+
+            const states = items && items[RESULTS_PAGE_STATES_KEY];
+            resolve(states && typeof states === 'object' ? states : {});
+        });
+    });
+}
+
+async function restoreResultsPageState() {
+    if (resultsStateId) {
+        try {
+            const localState = localStorage.getItem(`${LOCAL_RESULTS_PAGE_PREFIX}${resultsStateId}`);
+            if (localState) {
+                const parsed = JSON.parse(localState);
+                allResults = Array.isArray(parsed.results) ? parsed.results : [];
+                filteredResults = [...allResults];
+                if (parsed.accountId) {
+                    accountId = parsed.accountId;
+                }
+                return;
+            }
+        } catch (error) {
+            console.warn('Unable to restore local results tab state.', error);
+        }
+    }
+
+    if (!resultsStateId) {
+        return;
+    }
+
+    const states = await readResultsPageStates();
+    const state = states[resultsStateId];
+    if (!state || typeof state !== 'object') {
+        return;
+    }
+
+    allResults = Array.isArray(state.results) ? state.results : [];
+    filteredResults = [...allResults];
+    if (state.accountId) {
+        accountId = state.accountId;
+    }
+}
+
+function persistCurrentResultsTabState() {
+    if (!resultsStateId) {
+        return;
+    }
+
+    try {
+        localStorage.setItem(`${LOCAL_RESULTS_PAGE_PREFIX}${resultsStateId}`, JSON.stringify({
+            results: allResults,
+            accountId,
+            savedAt: Date.now()
+        }));
+    } catch (error) {
+        console.warn('Unable to persist local results tab state.', error);
+    }
+}
+
 function initializePage() {
- 
+    if (pageInitialized) {
+        renderResultsState();
+        return;
+    }
+
+    pageInitialized = true;
     displayResults(currentPage);
-    setupSearch(filteredResults);
+    setupSearch();
     setupPagination(filteredResults);
-    setupExportButtons(filteredResults);
+    setupExportButtons();
+    displayResultCount(filteredResults.length);
 }
 let currentPage = 1;
 let rowsPerPage = 10; 
@@ -36,18 +119,9 @@ if (rowsPerPageSelect) {
 
 // Waiting for the message from the popup with the query results
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === 'QUERY_RESULTS') {
-        const results = message.data;
-        filteredResults = results;  // Initially, filteredResults are the same as results
-        displayResults(currentPage);
-        setupSearch(results);
-        setupPagination(results);
-        displayResultCount(filteredResults.length);
-        setupExportButtons(results);  
-        sendResponse({ status: 'success' });
-    }
     if (message.type === 'ACCOUNT_ID') {
-        accountId = message.accountId;
+        accountId = message.accountId || accountId;
+        persistCurrentResultsTabState();
         console.log("Account ID received:", accountId);
     }
 });
@@ -272,25 +346,46 @@ function displayResultCount(count) {
     }
 }
 
-function setupSearch(results) {
+function setupSearch() {
+    if (searchBound) {
+        return;
+    }
+
     const searchInput = document.getElementById('searchInput');
+    if (!searchInput) {
+        return;
+    }
+
+    searchBound = true;
     searchInput.addEventListener('input', function () {
         const query = searchInput.value.toLowerCase();
-        filteredResults = results.filter(row => 
+        filteredResults = allResults.filter(row => 
             Object.values(row).some(value => value && value.toString().toLowerCase().includes(query))
         );
         currentPage = 1;
-        displayResults(currentPage);
-        setupPagination(filteredResults);
+        renderResultsState();
     });
 }
 
-function setupExportButtons(results) {
+function setupExportButtons() {
+    if (exportBound) {
+        return;
+    }
+
     const exportToCSVButton = document.getElementById('exportToCSV');
     const exportToExcelButton = document.getElementById('exportToExcel');
+    if (!exportToCSVButton || !exportToExcelButton) {
+        return;
+    }
+
+    exportBound = true;
 
     exportToCSVButton.addEventListener('click', function() {
-        const csvContent = generateCSVContent(results);
+        const exportResults = filteredResults.length ? filteredResults : allResults;
+        if (!exportResults.length) {
+            return;
+        }
+        const csvContent = generateCSVContent(exportResults);
         const blob = new Blob([csvContent], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -302,7 +397,11 @@ function setupExportButtons(results) {
     });
 
     exportToExcelButton.addEventListener('click', function() {
-        const excelContent = generateExcelContent(results);
+        const exportResults = filteredResults.length ? filteredResults : allResults;
+        if (!exportResults.length) {
+            return;
+        }
+        const excelContent = generateExcelContent(exportResults);
         const blob = new Blob([excelContent], { type: 'application/vnd.ms-excel' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -333,4 +432,10 @@ function generateExcelContent(results) {
         <table><thead><tr><td>${headers}</td></tr></thead><tbody>${rows}</tbody></table>
         </body></html>
     `;
+}
+
+function renderResultsState() {
+    displayResults(currentPage);
+    setupPagination(filteredResults);
+    displayResultCount(filteredResults.length);
 }

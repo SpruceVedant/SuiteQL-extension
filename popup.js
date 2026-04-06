@@ -2,6 +2,14 @@ let suiteScriptEditor = null;
 let queryEditor = null;
 let queryInputEl = null;
 let querySuggestionsEl = null;
+let queryLibraryEscHandler = null;
+let accountId = '';
+let currentPanelTabId = null;
+let panelStateSaveTimer = null;
+const INLINE_ENHANCEMENTS_SETTING_KEY = 'suitesenseInlineEnhancementsEnabled';
+const COMMAND_PALETTE_NEW_TAB_SETTING_KEY = 'suitesenseCommandPaletteOpenInNewTab';
+const PANEL_SESSION_STATE_KEY = 'suitesensePanelSessionState';
+const RESULTS_PAGE_STATES_KEY = 'suitesenseResultsPageStates';
 let autocompleteState = {
     items: [],
     selectedIndex: 0,
@@ -9,6 +17,15 @@ let autocompleteState = {
     to: null,
     visible: false
 };
+let latestOutputState = {
+    content: '',
+    status: 'Ready',
+    hint: 'Waiting for a query, field fetch, or script result.'
+};
+
+function createResultsPageStateId() {
+    return `results-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 let queryAutocompleteState = {
     items: [],
     selectedIndex: 0,
@@ -215,6 +232,22 @@ const suiteQlTables = Array.from(new Set([
     ...recordsCatalog.map((record) => record.name),
     ...Object.keys(bundledAutocompleteTables)
 ]));
+const suiteQlReservedWords = new Set([
+    'select', 'from', 'where', 'and', 'or', 'on', 'join', 'inner', 'left', 'right', 'full', 'cross',
+    'group', 'order', 'by', 'having', 'case', 'when', 'then', 'else', 'end', 'as'
+]);
+const likelyJoinTables = {
+    transaction: ['transactionLine', 'transactionAccountingLine', 'nextTransactionLink', 'previousTransactionLink', 'nextTransactionLineLink', 'previousTransactionLineLink', 'customer', 'entity'],
+    transactionline: ['transaction', 'item', 'customer', 'entity'],
+    transactionaccountingline: ['transaction', 'account'],
+    customer: ['transaction', 'entity', 'contact', 'location', 'subsidiary'],
+    vendor: ['transaction', 'entity', 'subsidiary'],
+    entity: ['customer', 'vendor', 'employee', 'transaction'],
+    item: ['transactionLine', 'transaction', 'location'],
+    employee: ['transaction', 'entity'],
+    account: ['transactionAccountingLine', 'transaction'],
+    location: ['transaction', 'transactionLine', 'item']
+};
 const suiteQlFunctions = ['COUNT(*)', 'SUM()', 'MAX()', 'MIN()', 'BUILTIN.DF()', 'BUILTIN.CF()'];
 const suiteQlCompletions = [
     ...suiteQlKeywords.map((keyword) => ({
@@ -243,13 +276,17 @@ const suiteQlCompletions = [
     }))
 ];
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     loadQueryHistory();
     queryInputEl = document.getElementById('query');
     querySuggestionsEl = document.getElementById('suggestions');
     rememberSidePanelTab();
+    initializeInlineEnhancementsToggle();
+    initializeCommandPaletteNavigationToggle();
+    initializeOutputPanel();
     initializeQueryEditor();
     initializeSuiteScriptEditor();
+    await restorePanelSessionState();
 
     document.getElementById('runSuiteScript').addEventListener('click', () => {
         const userScript = getSuiteScriptValue().trim();
@@ -301,7 +338,14 @@ document.addEventListener('click', function (event) {
 
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.type === 'OPEN_RESULTS_TAB') {
-            chrome.tabs.create({ url: chrome.runtime.getURL('hresults.html') }, function (tab) {
+            chrome.tabs.create({ url: chrome.runtime.getURL('hresults.html'), active: false }, function (tab) {
+                if (tab && tab.id) {
+                    chrome.runtime.sendMessage({
+                        type: 'REMEMBER_SIDE_PANEL_TAB',
+                        tabId: tab.id,
+                        url: chrome.runtime.getURL('hresults.html')
+                    });
+                }
                 chrome.tabs.onUpdated.addListener(function listener(tabId, changeInfo) {
                     if (tabId === tab.id && changeInfo.status === 'complete') {
                         chrome.tabs.sendMessage(tabId, { type: 'DISPLAY_HIERARCHY', hierarchy: message.hierarchy });
@@ -413,6 +457,7 @@ function initializeQueryEditor() {
     if (!editorTextarea || !editorMount || typeof CodeMirror === 'undefined') {
         updateQueryCursorStatusForTextarea(editorTextarea);
         if (editorTextarea) {
+            editorTextarea.addEventListener('input', schedulePanelSessionStateSave);
             editorTextarea.addEventListener('input', syncQueryFallbackSuggestions);
             editorTextarea.addEventListener('click', syncQueryFallbackSuggestions);
             editorTextarea.addEventListener('keyup', syncQueryFallbackSuggestions);
@@ -466,6 +511,7 @@ function initializeQueryEditor() {
 
     queryEditor.on('change', (cm) => {
         editorTextarea.value = cm.getValue();
+        schedulePanelSessionStateSave();
     });
 
     queryEditor.on('cursorActivity', () => {
@@ -515,7 +561,7 @@ function getQueryValue() {
     return queryInputEl ? queryInputEl.value : '';
 }
 
-function setQueryValue(value) {
+function setQueryValue(value, persist = true) {
     const nextValue = value || '';
     if (queryEditor) {
         queryEditor.setValue(nextValue);
@@ -526,6 +572,10 @@ function setQueryValue(value) {
     if (queryInputEl) {
         queryInputEl.value = nextValue;
         syncQueryFallbackSuggestions();
+    }
+
+    if (persist) {
+        schedulePanelSessionStateSave();
     }
 }
 
@@ -666,11 +716,27 @@ function getQueryAliasMap(queryText) {
     let match = aliasPattern.exec(queryText || '');
 
     while (match) {
-        aliases[String(match[2]).toLowerCase()] = match[1];
+        const aliasName = String(match[2] || '').toLowerCase();
+        if (!suiteQlReservedWords.has(aliasName)) {
+            aliases[aliasName] = match[1];
+        }
         match = aliasPattern.exec(queryText || '');
     }
 
     return aliases;
+}
+
+function getTablesReferencedInQuery(queryText) {
+    const matches = [];
+    const tablePattern = /\b(?:FROM|JOIN|INNER\s+JOIN|LEFT\s+JOIN|RIGHT\s+JOIN|FULL\s+JOIN|CROSS\s+JOIN)\s+([A-Za-z_][\w$]*)/gi;
+    let match = tablePattern.exec(queryText || '');
+
+    while (match) {
+        matches.push(match[1]);
+        match = tablePattern.exec(queryText || '');
+    }
+
+    return Array.from(new Set(matches));
 }
 
 function getAliasFieldCompletions(token, queryText) {
@@ -708,38 +774,136 @@ function getAliasFieldCompletions(token, queryText) {
     });
 }
 
+function getReferencedTableFieldCompletions(queryText) {
+    const referencedTables = getTablesReferencedInQuery(queryText);
+    if (!referencedTables.length) {
+        return [];
+    }
+
+    const preferredTable = referencedTables[referencedTables.length - 1];
+    const completions = referencedTables.flatMap((tableName) => {
+        return getRecordFieldList(tableName).map((field) => ({
+            label: field,
+            insertText: field,
+            detail: `${tableName} field`,
+            type: 'field',
+            sourceTable: tableName
+        }));
+    });
+
+    return sortQueryMatches(
+        Array.from(
+            new Map(completions.map((item) => [item.label.toLowerCase(), item])).values()
+        ),
+        '',
+        { preferredLabels: new Set(getRecordFieldList(preferredTable).map((field) => field.toLowerCase())) }
+    );
+}
+
 function getQueryCompletionContext(beforeCursor) {
     const compact = String(beforeCursor || '').replace(/\s+/g, ' ').trim();
     if (!compact) {
         return 'all';
     }
 
-    if (/\b(SELECT)\s*$/i.test(compact) || /\bSELECT\s+[^]*$/i.test(compact) && !/\bFROM\b/i.test(compact)) {
-        return 'field';
+    if (/[A-Za-z_][\w$]*\.$/.test(String(beforeCursor || '')) || /[A-Za-z_][\w$]*\.[A-Za-z_][\w$]*$/.test(compact)) {
+        return 'alias-field';
     }
 
-    if (/\b(FROM|JOIN)\s*[A-Za-z_]*$/i.test(compact)) {
+    if (/\b(SELECT)\s*$/i.test(compact) || /\bSELECT\s+[^]*$/i.test(compact) && !/\bFROM\b/i.test(compact)) {
+        return 'select-field';
+    }
+
+    if (/\b(FROM|JOIN|INNER JOIN|LEFT JOIN|RIGHT JOIN|FULL JOIN|CROSS JOIN)\s*[A-Za-z_]*$/i.test(compact)) {
         return 'table';
     }
 
     if (/\b(WHERE|AND|OR|ON|GROUP BY|ORDER BY|HAVING)\s*[A-Za-z_]*$/i.test(compact)) {
-        return 'field';
+        return 'filter-field';
     }
 
     return 'all';
+}
+
+function scoreQueryMatch(item, normalizedToken, options = {}) {
+    const lowerLabel = item.label.toLowerCase();
+    let score = 0;
+
+    if (!normalizedToken) {
+        score += 10;
+    } else if (lowerLabel === normalizedToken) {
+        score += 120;
+    } else if (lowerLabel.startsWith(normalizedToken)) {
+        score += 100;
+    } else if (lowerLabel.includes(`.${normalizedToken}`)) {
+        score += 90;
+    } else if (lowerLabel.includes(normalizedToken)) {
+        score += 70;
+    }
+
+    if (options.preferredLabels && options.preferredLabels.has(lowerLabel)) {
+        score += 40;
+    }
+
+    if (item.type === 'alias-field') {
+        score += 25;
+    } else if (item.type === 'field') {
+        score += 18;
+    } else if (item.type === 'function') {
+        score += 12;
+    } else if (item.type === 'table') {
+        score += 10;
+    }
+
+    return score;
+}
+
+function sortQueryMatches(pool, normalizedToken, options = {}) {
+    return [...pool]
+        .map((item) => ({
+            item,
+            score: scoreQueryMatch(item, normalizedToken, options)
+        }))
+        .filter((entry) => entry.score > 0 || !normalizedToken)
+        .sort((left, right) => {
+            if (right.score !== left.score) {
+                return right.score - left.score;
+            }
+
+            return left.item.label.localeCompare(right.item.label);
+        })
+        .map((entry) => entry.item);
 }
 
 function getQueryMatches(beforeCursor, fullQueryText = beforeCursor) {
     const tokenInfo = getQueryTokenInfoFromText(beforeCursor);
     const context = getQueryCompletionContext(beforeCursor);
     const aliasFieldCompletions = getAliasFieldCompletions(tokenInfo.word, fullQueryText);
+    const referencedTableFields = getReferencedTableFieldCompletions(fullQueryText);
     let pool = suiteQlCompletions;
+    let preferredLabels = null;
 
-    if (context === 'table') {
-        pool = suiteQlCompletions.filter((item) => item.type === 'table' || item.type === 'keyword');
-    } else if (context === 'field') {
+    if (context === 'alias-field') {
+        pool = aliasFieldCompletions;
+    } else if (context === 'table') {
+        const referencedTables = getTablesReferencedInQuery(fullQueryText);
+        const likelyTables = new Set(
+            referencedTables.flatMap((tableName) => likelyJoinTables[String(tableName || '').toLowerCase()] || [])
+                .map((tableName) => String(tableName).toLowerCase())
+        );
+
+        pool = suiteQlCompletions.filter((item) => item.type === 'table');
+        preferredLabels = likelyTables;
+    } else if (context === 'select-field') {
         pool = [
             ...aliasFieldCompletions,
+            ...referencedTableFields,
+            ...suiteQlCompletions.filter((item) => item.type === 'field' || item.type === 'function')
+        ];
+    } else if (context === 'filter-field') {
+        pool = [
+            ...aliasFieldCompletions,
+            ...referencedTableFields,
             ...suiteQlCompletions.filter((item) => item.type === 'field' || item.type === 'function' || item.type === 'keyword')
         ];
     } else if (aliasFieldCompletions.length) {
@@ -747,14 +911,7 @@ function getQueryMatches(beforeCursor, fullQueryText = beforeCursor) {
     }
 
     const normalized = tokenInfo.word.toLowerCase();
-    if (!normalized) {
-        return pool;
-    }
-
-    return pool.filter((item) => {
-        const lowerLabel = item.label.toLowerCase();
-        return lowerLabel.startsWith(normalized) || lowerLabel.includes(`.${normalized}`);
-    });
+    return sortQueryMatches(pool, normalized, { preferredLabels });
 }
 
 function showSuggestions(suggestions) {
@@ -921,6 +1078,8 @@ chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
         return;
     }
 
+    currentPanelTabId = activeTab.id;
+
     chrome.runtime.sendMessage({
         type: 'SIDE_PANEL_OPENED',
         tabId: activeTab.id,
@@ -931,6 +1090,238 @@ chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
         }
     });
 });
+}
+
+function getPanelStateStorageArea() {
+    return chrome.storage.session || chrome.storage.local;
+}
+
+function getCurrentPanelTabId() {
+    if (Number.isInteger(currentPanelTabId)) {
+        return Promise.resolve(currentPanelTabId);
+    }
+
+    return new Promise((resolve) => {
+        chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
+            if (chrome.runtime.lastError) {
+                resolve(null);
+                return;
+            }
+
+            const activeTab = tabs && tabs[0];
+            currentPanelTabId = activeTab && activeTab.id ? activeTab.id : null;
+            resolve(currentPanelTabId);
+        });
+    });
+}
+
+function readPanelSessionStates() {
+    return new Promise((resolve) => {
+        getPanelStateStorageArea().get({ [PANEL_SESSION_STATE_KEY]: {} }, (items) => {
+            if (chrome.runtime.lastError) {
+                resolve({});
+                return;
+            }
+
+            const states = items && items[PANEL_SESSION_STATE_KEY];
+            resolve(states && typeof states === 'object' ? states : {});
+        });
+    });
+}
+
+function writePanelSessionStates(states) {
+    return new Promise((resolve) => {
+        getPanelStateStorageArea().set({ [PANEL_SESSION_STATE_KEY]: states }, () => {
+            resolve();
+        });
+    });
+}
+
+function readResultsPageStates() {
+    return new Promise((resolve) => {
+        getPanelStateStorageArea().get({ [RESULTS_PAGE_STATES_KEY]: {} }, (items) => {
+            if (chrome.runtime.lastError) {
+                resolve({});
+                return;
+            }
+
+            const states = items && items[RESULTS_PAGE_STATES_KEY];
+            resolve(states && typeof states === 'object' ? states : {});
+        });
+    });
+}
+
+function writeResultsPageStates(states) {
+    return new Promise((resolve) => {
+        getPanelStateStorageArea().set({ [RESULTS_PAGE_STATES_KEY]: states }, () => {
+            resolve();
+        });
+    });
+}
+
+async function saveResultsPageState(stateId, results) {
+    if (!stateId) {
+        return;
+    }
+
+    const states = await readResultsPageStates();
+    states[stateId] = {
+        results,
+        accountId: accountId || '',
+        savedAt: Date.now()
+    };
+
+    const stateIds = Object.keys(states)
+        .sort((left, right) => (states[right]?.savedAt || 0) - (states[left]?.savedAt || 0));
+
+    stateIds.slice(12).forEach((staleId) => {
+        delete states[staleId];
+    });
+
+    await writeResultsPageStates(states);
+}
+
+async function savePanelSessionState() {
+    const tabId = await getCurrentPanelTabId();
+    if (!Number.isInteger(tabId)) {
+        return;
+    }
+
+    const states = await readPanelSessionStates();
+    states[String(tabId)] = {
+        query: getQueryValue(),
+        output: { ...latestOutputState },
+        savedAt: Date.now()
+    };
+    await writePanelSessionStates(states);
+}
+
+function schedulePanelSessionStateSave() {
+    window.clearTimeout(panelStateSaveTimer);
+    panelStateSaveTimer = window.setTimeout(() => {
+        savePanelSessionState().catch(() => {});
+    }, 150);
+}
+
+async function restorePanelSessionState() {
+    const tabId = await getCurrentPanelTabId();
+    if (!Number.isInteger(tabId)) {
+        return;
+    }
+
+    const states = await readPanelSessionStates();
+    const state = states[String(tabId)];
+    if (!state || typeof state !== 'object') {
+        return;
+    }
+
+    if (typeof state.query === 'string' && state.query.trim()) {
+        setQueryValue(state.query, false);
+    }
+
+    const output = state.output;
+    if (output && typeof output === 'object') {
+        setOutputState(output.content || '', output.status || 'Ready', output.hint || 'Waiting for a query, field fetch, or script result.', false);
+    }
+}
+
+function getInlineEnhancementsPreference() {
+    return new Promise((resolve) => {
+        chrome.storage.local.get({ [INLINE_ENHANCEMENTS_SETTING_KEY]: true }, (items) => {
+            if (chrome.runtime.lastError) {
+                resolve(true);
+                return;
+            }
+
+            resolve(items[INLINE_ENHANCEMENTS_SETTING_KEY] !== false);
+        });
+    });
+}
+
+function getCommandPaletteOpenInNewTabPreference() {
+    return new Promise((resolve) => {
+        chrome.storage.local.get({ [COMMAND_PALETTE_NEW_TAB_SETTING_KEY]: true }, (items) => {
+            if (chrome.runtime.lastError) {
+                resolve(true);
+                return;
+            }
+
+            resolve(items[COMMAND_PALETTE_NEW_TAB_SETTING_KEY] !== false);
+        });
+    });
+}
+
+function setInlineEnhancementsPreference(enabled) {
+    return new Promise((resolve) => {
+        chrome.storage.local.set({ [INLINE_ENHANCEMENTS_SETTING_KEY]: enabled }, () => {
+            resolve();
+        });
+    });
+}
+
+function setCommandPaletteOpenInNewTabPreference(enabled) {
+    return new Promise((resolve) => {
+        chrome.storage.local.set({ [COMMAND_PALETTE_NEW_TAB_SETTING_KEY]: enabled }, () => {
+            resolve();
+        });
+    });
+}
+
+function updateInlineEnhancementsToggleLabel(enabled) {
+    const stateEl = document.getElementById('inlineEnhancementsState');
+    if (stateEl) {
+        stateEl.textContent = enabled ? 'On' : 'Off';
+    }
+}
+
+function updateCommandPaletteNavigationToggleLabel(enabled) {
+    const stateEl = document.getElementById('commandPaletteNavigationState');
+    if (stateEl) {
+        stateEl.textContent = enabled ? 'New Tab' : 'Same Tab';
+    }
+}
+
+async function initializeInlineEnhancementsToggle() {
+    const toggleEl = document.getElementById('inlineEnhancementsToggle');
+    if (!toggleEl) {
+        return;
+    }
+
+    const initialEnabled = await getInlineEnhancementsPreference();
+    toggleEl.checked = initialEnabled;
+    updateInlineEnhancementsToggleLabel(initialEnabled);
+
+    toggleEl.addEventListener('change', async () => {
+        const enabled = !!toggleEl.checked;
+        updateInlineEnhancementsToggleLabel(enabled);
+        await setInlineEnhancementsPreference(enabled);
+
+        try {
+            await sendMessageToActiveTab(
+                { type: 'SET_INLINE_ENHANCEMENTS_ENABLED', enabled },
+                'Unable to update inline helper preference on the current tab.'
+            );
+        } catch (error) {
+            console.debug('Unable to sync inline helper preference to active tab:', error.message);
+        }
+    });
+}
+
+async function initializeCommandPaletteNavigationToggle() {
+    const toggleEl = document.getElementById('commandPaletteNavigationToggle');
+    if (!toggleEl) {
+        return;
+    }
+
+    const initialEnabled = await getCommandPaletteOpenInNewTabPreference();
+    toggleEl.checked = initialEnabled;
+    updateCommandPaletteNavigationToggleLabel(initialEnabled);
+
+    toggleEl.addEventListener('change', async () => {
+        const enabled = !!toggleEl.checked;
+        updateCommandPaletteNavigationToggleLabel(enabled);
+        await setCommandPaletteOpenInNewTabPreference(enabled);
+    });
 }
 
 function showLoader() {
@@ -951,27 +1342,107 @@ setTimeout(() => {
 }, 5000);
 }
 
+function initializeOutputPanel() {
+const copyButton = document.getElementById('copyOutput');
+const clearButton = document.getElementById('clearOutput');
+
+if (copyButton) {
+    copyButton.addEventListener('click', async () => {
+        const outputEl = document.getElementById('output');
+        const text = (outputEl && outputEl.textContent) ? outputEl.textContent.trim() : '';
+        if (!text) {
+            showError('There is no output to copy yet.');
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(text);
+        } catch (error) {
+            showError('Unable to copy the current output.');
+        }
+    });
+}
+
+if (clearButton) {
+    clearButton.addEventListener('click', () => {
+        setOutputState('', 'Ready', 'Waiting for a query, field fetch, or script result.');
+    });
+}
+
+setOutputState('', 'Ready', 'Waiting for a query, field fetch, or script result.', false);
+}
+
+function setOutputState(content, status, hint, persist = true) {
+const shell = document.getElementById('outputShell');
+const outputEl = document.getElementById('output');
+const statusEl = document.getElementById('outputStatus');
+const hintEl = document.getElementById('outputHint');
+if (!shell || !outputEl || !statusEl || !hintEl) {
+    return;
+}
+
+const text = String(content || '').trim();
+outputEl.textContent = text;
+statusEl.textContent = status || 'Ready';
+hintEl.textContent = hint || 'Waiting for a query, field fetch, or script result.';
+shell.classList.toggle('is-filled', !!text);
+shell.classList.toggle('is-empty', !text);
+
+latestOutputState = {
+    content: text,
+    status: status || 'Ready',
+    hint: hint || 'Waiting for a query, field fetch, or script result.'
+};
+
+if (persist) {
+    schedulePanelSessionStateSave();
+}
+}
+
 function sendMessageToActiveTab(message, fallbackError) {
 return new Promise((resolve, reject) => {
-    chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
-        if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message || fallbackError));
-            return;
-        }
-
-        const activeTab = tabs && tabs[0];
-        if (!activeTab || !activeTab.id) {
-            reject(new Error(fallbackError || 'No active NetSuite tab found.'));
-            return;
-        }
-
-        chrome.tabs.sendMessage(activeTab.id, message, (response) => {
+    const trySendToTabs = (queryInfo, next) => {
+        chrome.tabs.query(queryInfo, (tabs) => {
             if (chrome.runtime.lastError) {
-                reject(new Error(chrome.runtime.lastError.message || fallbackError));
+                next(new Error(chrome.runtime.lastError.message || fallbackError));
                 return;
             }
 
-            resolve(response);
+            const activeTab = tabs && tabs[0];
+            if (!activeTab || !activeTab.id) {
+                next(null);
+                return;
+            }
+
+            chrome.tabs.sendMessage(activeTab.id, message, (response) => {
+                if (chrome.runtime.lastError) {
+                    next(new Error(chrome.runtime.lastError.message || fallbackError));
+                    return;
+                }
+
+                if (typeof response === 'undefined') {
+                    next(new Error('No response was received from the NetSuite page. Refresh the tab and try again.'));
+                    return;
+                }
+
+                resolve(response);
+            });
+        });
+    };
+
+    trySendToTabs({ active: true, currentWindow: true }, (firstError) => {
+        if (firstError && !/Receiving end does not exist|No response was received/i.test(firstError.message)) {
+            reject(firstError);
+            return;
+        }
+
+        trySendToTabs({ active: true, lastFocusedWindow: true }, (secondError) => {
+            if (secondError) {
+                reject(secondError);
+                return;
+            }
+
+            reject(new Error(fallbackError || 'No active NetSuite tab found.'));
         });
     });
 });
@@ -1265,9 +1736,9 @@ console.log('Sending query:', query);
 sendMessageToActiveTab(
     { type: 'RUN_QUERY', query: query },
     'Error executing the query. Please check the syntax.'
-).catch(() => {
+).catch((error) => {
     hideLoader();
-    showError('Error executing the query. Please check the syntax.');
+    showError(error instanceof Error ? error.message : 'Error executing the query. Please check the syntax.');
 });
 }
 
@@ -1504,20 +1975,20 @@ const queryLibrary = [
 
 
 ];
-
 const modal = window.open('', '_blank', 'width=600,height=400');
-    
-// Write basic HTML structure and insert the thank-you message at the top right
+if (!modal) {
+    showError('Unable to open the query library window.');
+    return;
+}
+
 modal.document.write('<html><head><title>Query Library</title></head><body>');
 modal.document.write('<div style="position: absolute; top: 10px; right: 10px; font-size: 12px; color: #888;">Credits to Tim Dietrich for the excellent queries used in this extension.</div>');
 modal.document.write('<h2>Select a Query</h2>');
 
-// Create the container for the query library list
 const libraryContainer = modal.document.createElement('div');
 libraryContainer.id = 'libraryContainer';
 modal.document.body.appendChild(libraryContainer);
 
-// Populate the library with queries
 queryLibrary.forEach((queryObj, index) => {
     const queryDiv = modal.document.createElement('div');
     queryDiv.style.border = '1px solid #ccc';
@@ -1532,12 +2003,11 @@ queryLibrary.forEach((queryObj, index) => {
     const selectButton = modal.document.createElement('button');
     selectButton.textContent = 'Select';
     selectButton.dataset.queryIndex = index;
-    
-    selectButton.style.backgroundColor = '#007bff';  
-    selectButton.style.color = '#fff';  
-    selectButton.style.border = 'none';  
-    selectButton.style.padding = '5px 10px';  
-    selectButton.style.cursor = 'pointer';  
+    selectButton.style.backgroundColor = '#007bff';
+    selectButton.style.color = '#fff';
+    selectButton.style.border = 'none';
+    selectButton.style.padding = '5px 10px';
+    selectButton.style.cursor = 'pointer';
 
     selectButton.addEventListener('click', function () {
         const query = queryLibrary[this.dataset.queryIndex].query;
@@ -1793,24 +2263,60 @@ sendMessageToActiveTab(
 });
 }
 
+function renderFetchedFieldPayload(fields) {
+if (!fields || typeof fields !== 'object') {
+    return JSON.stringify(fields, null, 2);
+}
+
+const bodyCount = Object.keys(fields.bodyFields || {}).length;
+const lineGroups = Object.keys(fields.lineFields || {});
+
+return [
+    `Record Type: ${fields.recordType || 'Unknown'}`,
+    `Record ID: ${fields.id || 'Unknown'}`,
+    `Body Fields: ${bodyCount}`,
+    `Line Groups: ${lineGroups.length}`,
+    lineGroups.length ? `Sublists: ${lineGroups.join(', ')}` : 'Sublists: None',
+    '',
+    JSON.stringify(fields, null, 2)
+].join('\n');
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 if (message.type === 'ACCOUNT_ID') {
-        const accountId = message.accountId;
+        accountId = message.accountId || '';
         console.log('Account ID received in popup:', accountId);
     }
 if (message.type === 'QUERY_RESULTS') {
     console.log('Received query results:', message.data);
     try {
         const results = JSON.parse(message.data);
-        openResultsInNewTab(results);
+        openResultsInNewTab(results).catch((error) => {
+            console.error('Failed to open results tab:', error);
+            showError('Unable to open the query results tab.');
+        });
+        const rowCount = Array.isArray(results) ? results.length : (results && typeof results === 'object' ? Object.keys(results).length : 0);
+        setOutputState(
+            JSON.stringify(Array.isArray(results) ? results.slice(0, 3) : results, null, 2),
+            'Query Results',
+            `Opened ${rowCount} result ${rowCount === 1 ? 'row' : 'rows'} in a new tab. A small preview is shown here.`
+        );
     } catch (error) {
-        document.getElementById('output').textContent = message.data;
+        setOutputState(
+            message.data,
+            'Query Response',
+            'The query returned a non-tabular response, so it was shown directly here.'
+        );
         showError('Query execution returned an error.');
     }
     hideLoader(); 
 } else if (message.type === 'FIELDS_FETCHED') {
     const fields = message.data;
-    document.getElementById('output').textContent = JSON.stringify(fields, null, 2);
+    setOutputState(
+        renderFetchedFieldPayload(fields),
+        'Fields Fetched',
+        `Fetched ${Object.keys((fields && fields.bodyFields) || {}).length} body fields and ${Object.keys((fields && fields.lineFields) || {}).length} line groups from the current record.`
+    );
     hideLoader();
 } else if (message.type === 'FIELDS_FETCH_ERROR') {
     showError('Error fetching fields: ' + message.error);
@@ -1820,18 +2326,55 @@ if (message.type === 'QUERY_RESULTS') {
     const { success, value, error } = message.result;
     if (success) {
       // show whatever the script returned
-      document.getElementById('output').textContent = JSON.stringify(value, null, 2);
+      setOutputState(
+          JSON.stringify(value, null, 2),
+          'Script Result',
+          'SuiteScript executed successfully. The latest returned value is shown here.'
+      );
     } else {
+      setOutputState(
+          String(error || ''),
+          'Script Error',
+          'The script failed. The latest error message is shown here for quick reference.'
+      );
       showError('Script error: ' + error);
     }
   }
 });
 
 // Function to save the query to history
+function isLikelySuiteScriptSnippet(value) {
+const text = String(value || '').trim();
+if (!text) {
+    return false;
+}
+
+return /^(\/\/|\/\*|var\s|const\s|let\s|function\s|\(?\s*async\s+function\s|return\s+\{|if\s*\(|for\s*\(|while\s*\(|try\s*\{|log\.(debug|audit|error)\s*\(|record\.|search\.|runtime\.|query\.runSuiteQL\s*\(|window\.)/i.test(text);
+}
+
+function getSanitizedQueryHistory() {
+const rawHistory = JSON.parse(localStorage.getItem('queryHistory')) || [];
+const sanitizedHistory = rawHistory.filter((entry) => {
+    const text = String(entry || '').trim();
+    return text && !isLikelySuiteScriptSnippet(text);
+}).slice(0, 10);
+
+if (JSON.stringify(rawHistory) !== JSON.stringify(sanitizedHistory)) {
+    localStorage.setItem('queryHistory', JSON.stringify(sanitizedHistory));
+}
+
+return sanitizedHistory;
+}
+
 function saveQueryToHistory(query) {
-const history = JSON.parse(localStorage.getItem('queryHistory')) || [];
-if (!history.includes(query)) {
-    history.unshift(query);
+const normalizedQuery = String(query || '').trim();
+if (!normalizedQuery || isLikelySuiteScriptSnippet(normalizedQuery)) {
+    return;
+}
+
+const history = getSanitizedQueryHistory();
+if (!history.includes(normalizedQuery)) {
+    history.unshift(normalizedQuery);
     if (history.length > 10) {
         history.pop();
     }
@@ -1842,7 +2385,7 @@ if (!history.includes(query)) {
 
 // Loading query history 
 function loadQueryHistory() {
-const history = JSON.parse(localStorage.getItem('queryHistory')) || [];
+const history = getSanitizedQueryHistory();
 const historyDropdown = document.getElementById('queryHistory');
 historyDropdown.innerHTML = '<option value="" disabled selected>Select a previous query...</option>'; // Reset options
 
@@ -1880,15 +2423,18 @@ transaction: (id, type) => {
 }
 };
 
-function openResultsInNewTab(results) {
+async function openResultsInNewTab(results) {
+const stateId = createResultsPageStateId();
+await saveResultsPageState(stateId, results);
+const resultsUrl = `${chrome.runtime.getURL('results.html')}?state=${encodeURIComponent(stateId)}`;
 
-chrome.tabs.create({ url: 'results.html' }, function (tab) {
- 
-    chrome.tabs.onUpdated.addListener(function(tabId, changeInfo, tabInfo) {
-        if (tabId === tab.id && changeInfo.status === 'complete') {
-            chrome.tabs.sendMessage(tab.id, { type: 'QUERY_RESULTS', data: results });
-            chrome.tabs.sendMessage(tab.id, { type: 'ACCOUNT_ID', data: accountId})
-        }
-    });
+chrome.tabs.create({ url: resultsUrl, active: false }, function (tab) {
+    if (tab && tab.id) {
+        chrome.runtime.sendMessage({
+            type: 'REMEMBER_SIDE_PANEL_TAB',
+            tabId: tab.id,
+            url: resultsUrl
+        });
+    }
 });
 }

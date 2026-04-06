@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hierarchy Results</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+    }
+    ul {
+      list-style-type: none;
+    }
+    li {
+      margin: 10px 0;
+    }
+    ul {
+  list-style-type: none; /* Remove default bullet points */
+}
+
+li {
+  margin: 5px 0;
+}
+
+li:before {
+  content: "├── "; /* Create a tree-like branch */
+  padding-right: 5px;
+}
+
+li:last-child:before {
+  content: "└── "; /* Create a tree end for the last child */
+}
+  </style>
+</head>
+<body>
+  <h1>Record Hierarchy</h1>
+  <div id="hierarchyDisplay"></div>
+
+  <script src="hresults.js"></script>
+</body>
+</html>

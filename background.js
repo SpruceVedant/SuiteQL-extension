@@ -1,14 +1,88 @@
 let accountId = '';
 const rememberedPanelTabs = new Set();
+const REMEMBERED_PANEL_TABS_KEY = 'rememberedSidePanelTabs';
+
+function getPanelTabStorageArea() {
+    return chrome.storage.session || chrome.storage.local;
+}
+
+async function persistRememberedPanelTabs() {
+    try {
+        await getPanelTabStorageArea().set({
+            [REMEMBERED_PANEL_TABS_KEY]: Array.from(rememberedPanelTabs)
+        });
+    } catch (error) {
+        console.error('Failed to persist remembered side panel tabs.', error);
+    }
+}
+
+async function loadRememberedPanelTabs() {
+    try {
+        const stored = await getPanelTabStorageArea().get(REMEMBERED_PANEL_TABS_KEY);
+        const tabIds = stored?.[REMEMBERED_PANEL_TABS_KEY];
+        if (!Array.isArray(tabIds)) {
+            return;
+        }
+
+        rememberedPanelTabs.clear();
+        tabIds.forEach((tabId) => {
+            if (Number.isInteger(tabId)) {
+                rememberedPanelTabs.add(tabId);
+            }
+        });
+    } catch (error) {
+        console.error('Failed to load remembered side panel tabs.', error);
+    }
+}
+
+async function rememberPanelTab(tabId) {
+    if (!Number.isInteger(tabId)) {
+        return;
+    }
+
+    rememberedPanelTabs.add(tabId);
+    await persistRememberedPanelTabs();
+}
+
+async function forgetPanelTab(tabId) {
+    if (!Number.isInteger(tabId)) {
+        return;
+    }
+
+    if (rememberedPanelTabs.delete(tabId)) {
+        await persistRememberedPanelTabs();
+    }
+}
+
+async function isRememberedPanelTab(tabId) {
+    if (!Number.isInteger(tabId)) {
+        return false;
+    }
+
+    if (rememberedPanelTabs.has(tabId)) {
+        return true;
+    }
+
+    await loadRememberedPanelTabs();
+    return rememberedPanelTabs.has(tabId);
+}
 
 function isNetSuiteUrl(url = '') {
     return /^https:\/\/([^.]+\.)*(app\.)?netsuite\.com\//i.test(url);
 }
 
+function isSuitesenseResultsUrl(url = '') {
+    return new RegExp(`^chrome-extension://${chrome.runtime.id}/(?:results|hresults)\\.html(?:\\?|#|$)`, 'i').test(url);
+}
+
+function isSupportedSidePanelUrl(url = '') {
+    return isNetSuiteUrl(url) || isSuitesenseResultsUrl(url);
+}
+
 async function configureSidePanelBehavior() {
     try {
         await chrome.sidePanel.setPanelBehavior({
-            openPanelOnActionClick: true
+            openPanelOnActionClick: false
         });
     } catch (error) {
         console.error('Failed to configure side panel behavior.', error);
@@ -25,7 +99,45 @@ chrome.runtime.onStartup.addListener(() => {
     configureSidePanelBehavior();
 });
 
+async function openSuitesenseForTab(tab) {
+    try {
+        if (!tab || !tab.id || !tab.windowId) {
+            return;
+        }
+
+        const url = tab.url || '';
+
+        if (!isSupportedSidePanelUrl(url)) {
+            await chrome.sidePanel.close({ windowId: tab.windowId });
+            return;
+        }
+
+        if (rememberedPanelTabs.has(tab.id)) {
+            await forgetPanelTab(tab.id);
+            await syncTabSidePanelState(tab.id, false);
+            await chrome.sidePanel.close({ windowId: tab.windowId });
+            return;
+        }
+
+        await chrome.sidePanel.open({ windowId: tab.windowId });
+        syncTabSidePanelState(tab.id, true);
+        rememberedPanelTabs.clear();
+        rememberedPanelTabs.add(tab.id);
+        await persistRememberedPanelTabs();
+    } catch (error) {
+        console.error('Failed to open Suitesense side panel.', error);
+    }
+}
+
+chrome.action.onClicked.addListener(async (tab) => {
+    await openSuitesenseForTab(tab);
+});
+
 async function syncTabSidePanel(tabId, url) {
+    return syncTabSidePanelState(tabId, isSupportedSidePanelUrl(url || ''));
+}
+
+async function syncTabSidePanelState(tabId, enabled) {
     if (!tabId) {
         return;
     }
@@ -33,8 +145,7 @@ async function syncTabSidePanel(tabId, url) {
     try {
         await chrome.sidePanel.setOptions({
             tabId,
-            path: 'popup.html',
-            enabled: isNetSuiteUrl(url || '')
+            enabled
         });
     } catch (error) {
         console.error('Failed to sync side panel for tab.', error);
@@ -42,6 +153,10 @@ async function syncTabSidePanel(tabId, url) {
 }
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (!changeInfo.url && changeInfo.status !== 'complete') {
+        return;
+    }
+
     const url = changeInfo.url || tab.url || '';
     if (!url) {
         return;
@@ -53,32 +168,51 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
     try {
         const tab = await chrome.tabs.get(tabId);
-        await syncTabSidePanel(tabId, tab.url || '');
+        const supported = isSupportedSidePanelUrl(tab.url || '');
+        const remembered = supported && (await isRememberedPanelTab(tabId));
+        await syncTabSidePanelState(tabId, remembered);
 
         if (!tab.windowId) {
             return;
         }
 
-        if (!isNetSuiteUrl(tab.url || '')) {
-            await chrome.sidePanel.close({ windowId: tab.windowId });
+        if (remembered) {
+            await chrome.sidePanel.open({ windowId: tab.windowId });
             return;
         }
 
-        if (rememberedPanelTabs.has(tabId)) {
-            await chrome.sidePanel.open({ windowId: tab.windowId });
-        }
+        await chrome.sidePanel.close({ windowId: tab.windowId });
     } catch (error) {
         console.error('Failed to update side panel on tab activation.', error);
     }
 });
 
+chrome.tabs.onRemoved.addListener((tabId) => {
+    forgetPanelTab(tabId);
+});
+
 async function initializeExistingTabs() {
     try {
+        await loadRememberedPanelTabs();
         const tabs = await chrome.tabs.query({});
+        const existingTabIds = new Set(tabs.map((tab) => tab.id).filter((tabId) => Number.isInteger(tabId)));
+
+        Array.from(rememberedPanelTabs).forEach((tabId) => {
+            if (!existingTabIds.has(tabId)) {
+                rememberedPanelTabs.delete(tabId);
+            }
+        });
+
+        await persistRememberedPanelTabs();
+
         await Promise.all(
             tabs
                 .filter((tab) => tab.id)
-                .map((tab) => syncTabSidePanel(tab.id, tab.url || ''))
+                .map(async (tab) => {
+                    const supported = isSupportedSidePanelUrl(tab.url || '');
+                    const remembered = supported && rememberedPanelTabs.has(tab.id);
+                    await syncTabSidePanelState(tab.id, remembered);
+                })
         );
     } catch (error) {
         console.error('Failed to initialize side panel state for existing tabs.', error);
@@ -88,11 +222,23 @@ async function initializeExistingTabs() {
 initializeExistingTabs();
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (sender.tab && sender.tab.id && sender.tab.url) {
+        syncTabSidePanel(sender.tab.id, sender.tab.url);
+    }
+
     if (message.type === 'SIDE_PANEL_OPENED') {
-        if (message.tabId && isNetSuiteUrl(message.url || '')) {
-            rememberedPanelTabs.add(message.tabId);
+        if (message.tabId && isSupportedSidePanelUrl(message.url || '')) {
+            rememberPanelTab(message.tabId);
         }
         sendResponse({ status: 'Side panel tab remembered' });
+        return;
+    }
+
+    if (message.type === 'REMEMBER_SIDE_PANEL_TAB') {
+        if (message.tabId && isSupportedSidePanelUrl(message.url || '')) {
+            syncTabSidePanel(message.tabId, message.url || '');
+        }
+        sendResponse({ status: 'Remembered side panel tab' });
         return;
     }
 
@@ -105,6 +251,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === 'GET_ACCOUNT_ID') {
         sendResponse({ accountId });
+        return;
+    }
+
+    if (message.type === 'OPEN_SIDE_PANEL_FOR_SENDER') {
+        if (sender.tab) {
+            openSuitesenseForTab(sender.tab);
+            sendResponse({ ok: true });
+            return;
+        }
+
+        sendResponse({ ok: false });
         return;
     }
 

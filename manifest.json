@@ -1,37 +1,42 @@
 {
-  "manifest_version": 3,
-  "name": "NetSuite SuiteQL Runner",
-  "version": "1.0",
-  "permissions": ["activeTab", "scripting", "webNavigation"],
-  "host_permissions": [
-    "*://*.netsuite.com/*"
-  ],
-  "background": {
-    "service_worker": "background.js"
-  },
-  "content_scripts": [
-    {
-      "matches": ["*://*.netsuite.com/*"],
-      "js": ["content.js"]
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "injectedScript.js",
-        "libs/jspdf.umd.min.js",
-        "libs/jspdf.plugin.autotable.min.js",
-        "libs/chart.min.js"
-      ],
-      "matches": ["*://*.netsuite.com/*"]
-    }
-  ],
-  "action": {
-    "default_popup": "popup.html",
-    "default_icon": {
-      "16": "images/net.png",
-      "48": "images/net.png",
-      "128": "images/net.png"
-    }
-  }
+   "action": {
+      "default_icon": {
+         "128": "images/icon128.png",
+         "16": "images/icon16.png",
+         "48": "images/icon48.png"
+      }
+   },
+   "background": {
+      "service_worker": "background.js"
+   },
+   "content_scripts": [ {
+      "js": [ "content.js" ],
+      "matches": [ "*://*.netsuite.com/*" ]
+   } ],
+   "icons": {
+      "128": "images/icon128.png",
+      "16": "images/icon16.png",
+      "48": "images/icon48.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1279OjgCvrRnPJYI2EEGWTUOxJi3I7NYGZ53Awr7Jb/0NhsBTG35JdOadSBBFJNd60I/ZshogHWvCYCXMuFOkaHKxdaE20Ld0FUTZ4Njq/FC2qkQ4hNmGox11Q8LFWkJ26TyMDRx5aFFnynL/+5RQ/o69tz/+pL2k/A15B7FxNvksoTiWKjM34zaN3OSu7JU45IFrizUsg8/Ej74/HvyESU3QTgIU8PyN0lGgBAp4CQU1OUnfrbDj4EAVxAZvA6SdCjywOFQRseeZ4wF5X0atI8HBFAZ3ajN6kmv9gjVB0PnaxGnKXovuHiyoYIg+0GHJc4GEW2/PjY+FAL6y6fpkwIDAQAB",
+   "manifest_version": 3,
+   "name": "Suitesense",
+   "commands": {
+      "_execute_action": {
+         "suggested_key": {
+            "default": "Ctrl+Shift+Y",
+            "mac": "Command+Shift+Y"
+         }
+      }
+   },
+   "permissions": [ "activeTab", "scripting", "sidePanel", "storage" ],
+   "side_panel": {
+      "default_path": "popup.html"
+   },
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "1.0",
+   "web_accessible_resources": [ {
+      "matches": [ "*://*.netsuite.com/*" ],
+      "resources": [ "injectedScript.js", "libs/chart.min.js", "libs/json-viewer.min.js", "libs/json-viewer.min.css", "popup.html" ]
+   } ]
 }

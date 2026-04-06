@@ -3,261 +3,1000 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>NetSuite SuiteQL Runner</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Suitesense</title>
+    <link rel="stylesheet" href="libs/codemirror.css">
     <style>
-        /* General Reset */
-        body,
-        h2,
-        textarea,
-        button,
-        select,
-        label {
-            margin: 0;
-            padding: 0;
-            font-family: Arial, sans-serif;
+        :root {
+            color-scheme: light;
+            --panel-bg: #f3f7fc;
+            --panel-bg-soft: #ffffff;
+            --panel-bg-strong: #eef4ff;
+            --panel-border: rgba(0, 123, 255, 0.14);
+            --panel-text: #14233b;
+            --panel-muted: #60718c;
+            --panel-accent: #007bff;
+            --panel-accent-strong: #0056b3;
+            --panel-accent-soft: #eaf3ff;
+            --panel-success: #118a58;
+            --panel-danger: #b64242;
+            --panel-shadow: 0 16px 34px rgba(16, 43, 84, 0.12);
+        }
+
+        * {
             box-sizing: border-box;
         }
 
-        /* Container Styling */
+        html,
+        body {
+            margin: 0;
+            min-width: 420px;
+            min-height: 100%;
+            background:
+                radial-gradient(circle at top, rgba(0, 123, 255, 0.12), transparent 30%),
+                linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
+            color: var(--panel-text);
+            font-family: "Segoe UI", Arial, sans-serif;
+        }
+
+        body {
+            overflow-x: hidden;
+        }
+
         #container {
-            width: 600px;
-            padding: 15px;
-            background-color: #f4f4f4;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            min-height: 100vh;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
         }
 
-        /* Title Styling */
-        h2 {
-            color: #007bff;
-            margin-bottom: 10px;
-            text-align: center;
-            font-size: 20px;
-            font-weight: bold;
+        .panel-hero,
+        .panel-card {
+            background: rgba(255, 255, 255, 0.96);
+            border: 1px solid var(--panel-border);
+            border-radius: 18px;
+            box-shadow: var(--panel-shadow);
+            backdrop-filter: blur(10px);
         }
 
-        /* Textarea Styling */
-        textarea {
+        .panel-hero {
+            padding: 20px;
+            background:
+                linear-gradient(135deg, #ffffff 0%, #eef5ff 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .panel-hero::after {
+            content: "";
+            position: absolute;
+            inset: 0 auto auto 0;
             width: 100%;
-            height: 80px;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            font-size: 14px;
-            resize: none;
-            outline: none;
-            margin-bottom: 10px;
-            background-color: #fff;
+            height: 6px;
+            background: linear-gradient(90deg, var(--panel-accent) 0%, #5ab1ff 100%);
         }
 
-        textarea::placeholder {
-            color: #999;
+        .eyebrow {
+            margin: 0 0 8px;
+            color: var(--panel-accent);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
         }
 
-        /* Button Styling */
-        button {
-            width: 100%;
-            padding: 10px;
-            border: none;
-            border-radius: 5px;
-            background-color: #007bff;
-            color: white;
+        h1 {
+            margin: 0;
+            font-size: 22px;
+            line-height: 1.2;
+        }
+
+        .hero-copy {
+            margin: 10px 0 0;
+            color: var(--panel-muted);
             font-size: 14px;
+            line-height: 1.55;
+        }
+
+        .panel-card {
+            padding: 18px;
+        }
+
+        .panel-card.editor-card {
+            padding-bottom: 16px;
+        }
+
+        .settings-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 16px 18px;
+        }
+
+        .settings-copy {
+            flex: 1;
+        }
+
+        .settings-title {
+            margin: 0 0 4px;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .settings-text {
+            margin: 0;
+            color: var(--panel-muted);
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .toggle-row {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            margin: 0;
             cursor: pointer;
-            transition: background-color 0.3s ease;
-            margin-bottom: 10px;
+        }
+
+        .toggle-row input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .toggle-track {
+            position: relative;
+            width: 54px;
+            height: 30px;
+            border-radius: 999px;
+            background: #d6dfec;
+            transition: background 0.2s ease;
+            box-shadow: inset 0 0 0 1px rgba(20, 35, 59, 0.08);
+        }
+
+        .toggle-track::after {
+            content: "";
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #ffffff;
+            box-shadow: 0 4px 10px rgba(16, 43, 84, 0.18);
+            transition: transform 0.2s ease;
+        }
+
+        .toggle-row input:checked + .toggle-track {
+            background: linear-gradient(135deg, var(--panel-accent) 0%, var(--panel-accent-strong) 100%);
+        }
+
+        .toggle-row input:checked + .toggle-track::after {
+            transform: translateX(24px);
+        }
+
+        .toggle-state {
+            min-width: 58px;
+            color: #193150;
+            font-size: 12px;
+            font-weight: 700;
+            text-align: right;
+        }
+
+        .section-title {
+            margin: 0 0 8px;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .section-copy {
+            margin: 0 0 14px;
+            color: var(--panel-muted);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        label {
+            display: block;
+            margin: 0 0 8px;
+            color: #21314e;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        #query,
+        #queryHistory,
+        #suiteScriptInput,
+        #output {
+            width: 100%;
+            border-radius: 14px;
+            border: 1px solid rgba(0, 123, 255, 0.12);
+            background: #ffffff;
+            color: var(--panel-text);
+            font: inherit;
+        }
+
+        #query,
+        #queryHistory,
+        #suiteScriptInput {
+            padding: 14px 15px;
+            outline: none;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+        }
+
+        #query:focus,
+        #queryHistory:focus,
+        #suiteScriptInput:focus {
+            border-color: rgba(0, 123, 255, 0.5);
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.12);
+            background: #ffffff;
+        }
+
+        #query,
+        #suiteScriptInput {
+            min-height: 150px;
+            resize: vertical;
+        }
+
+        #queryHistory {
+            appearance: none;
+        }
+
+        #query::placeholder,
+        #suiteScriptInput::placeholder {
+            color: #8a96ab;
+        }
+
+        .field-stack {
+            position: relative;
+            margin-bottom: 14px;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 6px;
+        }
+
+        button {
+            border: 0;
+            border-radius: 999px;
+            padding: 12px 18px;
+            background: linear-gradient(135deg, var(--panel-accent) 0%, var(--panel-accent-strong) 100%);
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
+            box-shadow: 0 10px 22px rgba(0, 86, 179, 0.22);
         }
 
         button:hover {
-            background-color: #0056b3;
+            transform: translateY(-1px);
+            box-shadow: 0 14px 28px rgba(0, 86, 179, 0.28);
         }
 
-        /* Dropdown and Label Styling */
-        label {
-            font-size: 14px;
-            color: #333;
-            margin-bottom: 5px;
+        button:active {
+            transform: translateY(0);
+        }
+
+        #openQueryLibrary,
+        #openRecordsCatalog,
+        #fetchFields {
+            background: var(--panel-accent-soft);
+            color: var(--panel-accent-strong);
+            box-shadow: none;
+            border: 1px solid rgba(0, 123, 255, 0.16);
+        }
+
+        #runSuiteScript {
+            width: 100%;
+            margin-top: 12px;
+            background: linear-gradient(135deg, #111111 0%, #2a2a2a 100%);
+            box-shadow: 0 10px 22px rgba(17, 17, 17, 0.18);
+        }
+
+        .editor-shell {
+            position: relative;
+            border: 1px solid rgba(0, 123, 255, 0.12);
+            border-radius: 16px;
+            overflow: hidden;
+            background: #fdfefe;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+        }
+
+        #suiteScriptEditorMount {
+            min-height: 320px;
+            background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+            display: none;
+        }
+
+        #queryEditorMount {
+            min-height: 220px;
+            background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+            display: none;
+        }
+
+        .editor-shell.is-enhanced #suiteScriptEditorMount {
             display: block;
         }
 
-        select {
-            width: 100%;
-            padding: 8px;
-            border-radius: 5px;
-            border: 1px solid #ccc;
-            margin-bottom: 10px;
-            font-size: 14px;
-            background-color: #fff;
+        .editor-shell.is-enhanced #queryEditorMount {
+            display: block;
         }
 
-        /* Script Section Styling */
-        .script-section {
-            margin-top: 20px;
-        }
-
-        /* Output Area Styling */
-        pre {
-            margin-top: 10px;
-            background-color: #e9ecef;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            padding: 10px;
-            height: 150px;
-            overflow: auto;
-            font-size: 14px;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
-
-        /* Lazy loader */
-        #loader {
-            border: 16px solid #f3f3f3;
-            border-top: 16px solid #3498db;
-            border-radius: 50%;
-            width: 60px;
-            height: 60px;
-            animation: spin 2s linear infinite;
-            position: fixed;
-            top: 44%;
-            left: 44%;
-            transform: translate(-50%, -50%);
+        .editor-shell.is-enhanced #suiteScriptInput {
             display: none;
-            z-index: 9999;
+        }
+
+        .editor-shell.is-enhanced #query {
+            display: none;
+        }
+
+        .editor-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 14px;
+            background: linear-gradient(180deg, #f6faff 0%, #ebf3ff 100%);
+            border-bottom: 1px solid rgba(0, 123, 255, 0.1);
+        }
+
+        .editor-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #193150;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .editor-dots {
+            display: inline-flex;
+            gap: 6px;
+        }
+
+        .editor-dots span {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            display: block;
+        }
+
+        .editor-dots span:nth-child(1) {
+            background: #ff6b6b;
+        }
+
+        .editor-dots span:nth-child(2) {
+            background: #ffd166;
+        }
+
+        .editor-dots span:nth-child(3) {
+            background: #06d6a0;
+        }
+
+        .editor-meta {
+            color: var(--panel-muted);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .editor-hint {
+            margin: 10px 0 0;
+            color: var(--panel-muted);
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .CodeMirror {
+            height: 320px;
+            font-family: Consolas, "SFMono-Regular", "Cascadia Code", monospace;
+            font-size: 13px;
+            line-height: 1.55;
+            color: #1b2c46;
+            background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+        }
+
+        .CodeMirror-scroll {
+            min-height: 320px;
+        }
+
+        .query-editor-shell .CodeMirror {
+            height: 220px;
+        }
+
+        .query-editor-shell .CodeMirror-scroll {
+            min-height: 220px;
+        }
+
+        .CodeMirror-gutters {
+            background: #f2f7ff;
+            border-right: 1px solid rgba(0, 123, 255, 0.08);
+        }
+
+        .CodeMirror-linenumber {
+            color: #8da0bb;
+        }
+
+        .CodeMirror-cursor {
+            border-left: 2px solid #0056b3;
+        }
+
+        .CodeMirror-selected {
+            background: rgba(0, 123, 255, 0.12) !important;
+        }
+
+        .cm-comment {
+            color: #6d7f98;
+        }
+
+        .cm-keyword,
+        .cm-def {
+            color: #0056b3;
+        }
+
+        .cm-string {
+            color: #0b8a5a;
+        }
+
+        .cm-number,
+        .cm-atom {
+            color: #8d4cd6;
+        }
+
+        .cm-variable,
+        .cm-variable-2,
+        .cm-property {
+            color: #1b2c46;
+        }
+
+        .editor-autocomplete {
+            position: absolute;
+            min-width: 230px;
+            max-width: 320px;
+            max-height: 220px;
+            overflow-y: auto;
+            background: rgba(255, 255, 255, 0.98);
+            border: 1px solid rgba(0, 123, 255, 0.16);
+            border-radius: 14px;
+            box-shadow: 0 16px 32px rgba(16, 43, 84, 0.16);
+            z-index: 30;
+            display: none;
+        }
+
+        .editor-autocomplete-item {
+            padding: 10px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(0, 123, 255, 0.08);
+        }
+
+        .editor-autocomplete-item:last-child {
+            border-bottom: 0;
+        }
+
+        .editor-autocomplete-item.is-active,
+        .editor-autocomplete-item:hover {
+            background: rgba(0, 123, 255, 0.08);
+        }
+
+        .editor-autocomplete-label {
+            color: #17304d;
+            font-family: Consolas, "SFMono-Regular", "Cascadia Code", monospace;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .editor-autocomplete-detail {
+            margin-top: 3px;
+            color: var(--panel-muted);
+            font-size: 11px;
+            line-height: 1.45;
+        }
+
+        .editor-statusbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 10px 14px;
+            border-top: 1px solid rgba(0, 123, 255, 0.1);
+            background: linear-gradient(180deg, #fbfdff 0%, #f1f6fe 100%);
+            color: var(--panel-muted);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .suggestions-box {
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            right: 0;
+            display: none;
+            max-height: 180px;
+            overflow-y: auto;
+            border: 1px solid rgba(0, 123, 255, 0.12);
+            border-radius: 14px;
+            background: rgba(255, 255, 255, 0.98);
+            box-shadow: 0 18px 34px rgba(16, 43, 84, 0.14);
+            z-index: 50;
+        }
+
+        .suggestions-box div {
+            padding: 12px 14px;
+            cursor: pointer;
+            color: var(--panel-text);
+        }
+
+        .suggestions-box div:hover {
+            background: rgba(0, 123, 255, 0.08);
+        }
+
+        .output-shell {
+            border: 1px solid rgba(0, 123, 255, 0.12);
+            border-radius: 16px;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+            overflow: hidden;
+            transition: min-height 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .output-shell.is-empty {
+            min-height: 112px;
+        }
+
+        .output-shell.is-filled {
+            min-height: 160px;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+        }
+
+        .output-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 16px 10px;
+            border-bottom: 1px solid rgba(0, 123, 255, 0.08);
+        }
+
+        .output-meta {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .output-status {
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            border-radius: 999px;
+            padding: 4px 10px;
+            background: #eaf3ff;
+            color: #0056b3;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .output-hint {
+            color: var(--panel-muted);
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        .output-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .output-action {
+            border: 1px solid rgba(0, 123, 255, 0.12);
+            border-radius: 999px;
+            padding: 8px 12px;
+            background: #ffffff;
+            color: #0056b3;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .output-action:hover {
+            background: #f3f8ff;
+        }
+
+        .output-empty {
+            padding: 14px 16px 18px;
+            color: var(--panel-muted);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .output-shell.is-filled .output-empty {
+            display: none;
+        }
+
+        #output {
+            display: none;
+            max-height: 320px;
+            margin: 0;
+            padding: 0 16px 16px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: #223450;
+            line-height: 1.55;
+            background: transparent;
+            font-size: 12.5px;
+        }
+
+        .output-shell.is-filled #output {
+            display: block;
+        }
+
+        #loader {
+            display: none;
+            width: 52px;
+            height: 52px;
+            border: 4px solid rgba(0, 123, 255, 0.16);
+            border-top-color: var(--panel-accent);
+            border-radius: 50%;
+            position: fixed;
+            top: 24px;
+            right: 24px;
+            animation: spin 0.8s linear infinite;
+            z-index: 100;
+            pointer-events: none;
         }
 
         @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
+            to {
                 transform: rotate(360deg);
             }
         }
 
-        /* Message box for errors */
         #errorBox {
-            position: fixed;
-            top: 10%;
-            left: 50%;
-            transform: translate(-50%, -10%);
-            background-color: #ffdddd;
-            color: #a94442;
-            padding: 10px;
-            border: 1px solid #f5c6cb;
-            border-radius: 4px;
             display: none;
-            z-index: 9999;
+            padding: 12px 14px;
+            border: 1px solid rgba(182, 66, 66, 0.18);
+            border-radius: 14px;
+            background: #fff1f1;
+            color: var(--panel-danger);
+            font-size: 13px;
         }
 
-        /* Footer Styling */
         .footer {
-            margin-top: 10px;
-            text-align: center;
+            color: var(--panel-muted);
             font-size: 12px;
-            color: #888;
+            line-height: 1.6;
         }
 
         .footer a {
-            color: #007bff;
+            color: var(--panel-accent);
+            font-weight: 600;
             text-decoration: none;
-            font-weight: bold;
         }
 
         .footer a:hover {
             text-decoration: underline;
         }
 
-        /* Salesforce Integration Section */
-        .integration-section {
-            margin-top: 20px;
-            border-top: 1px solid rgb(204, 204, 204);
-            padding-top: 10px;
+        .library-overlay {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+            background: rgba(9, 21, 40, 0.42);
+            backdrop-filter: blur(6px);
+            z-index: 200;
         }
 
-        .integration-section input {
-            width: calc(100% - 22px);
-            padding: 10px;
-            border-radius: 5px;
-            border: 1px solid #ccc;
-            margin-bottom: 10px;
+        .library-overlay.is-open {
+            display: flex;
+        }
+
+        .library-modal {
+            width: min(860px, 100%);
+            max-height: min(82vh, 860px);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background: rgba(255, 255, 255, 0.98);
+            border: 1px solid var(--panel-border);
+            border-radius: 22px;
+            box-shadow: 0 24px 48px rgba(16, 43, 84, 0.2);
+        }
+
+        .library-modal-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 18px 20px 14px;
+            border-bottom: 1px solid rgba(0, 123, 255, 0.1);
+            background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+        }
+
+        .library-modal-title {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .library-modal-copy {
+            margin: 6px 0 0;
+            color: var(--panel-muted);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .library-modal-close {
+            min-width: 42px;
+            padding: 10px 12px;
+            background: var(--panel-accent-soft);
+            color: var(--panel-accent-strong);
+            box-shadow: none;
+            border: 1px solid rgba(0, 123, 255, 0.16);
+        }
+
+        .library-modal-search {
+            margin: 16px 20px 0;
+            padding: 14px 16px;
+            border: 1px solid rgba(0, 123, 255, 0.14);
+            border-radius: 14px;
+            outline: none;
+            font: inherit;
+        }
+
+        .library-modal-search:focus {
+            border-color: rgba(0, 123, 255, 0.45);
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.12);
+        }
+
+        .library-modal-credit {
+            margin: 12px 20px 0;
+            color: var(--panel-muted);
+            font-size: 12px;
+        }
+
+        .library-modal-list {
+            padding: 16px 20px 20px;
+            overflow: auto;
+            display: grid;
+            gap: 12px;
+        }
+
+        .library-item {
+            border: 1px solid rgba(0, 123, 255, 0.12);
+            border-radius: 18px;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+            padding: 16px;
+            box-shadow: 0 10px 22px rgba(16, 43, 84, 0.08);
+        }
+
+        .library-item-title {
+            margin: 0 0 8px;
+            color: #16365c;
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .library-item-description {
+            margin: 0;
+            color: var(--panel-muted);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .library-item-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .library-item-button {
+            background: var(--panel-accent-soft);
+            color: var(--panel-accent-strong);
+            box-shadow: none;
+            border: 1px solid rgba(0, 123, 255, 0.16);
+        }
+
+        .library-item-button.is-primary {
+            background: linear-gradient(135deg, var(--panel-accent) 0%, var(--panel-accent-strong) 100%);
+            color: #ffffff;
+            box-shadow: 0 10px 20px rgba(0, 86, 179, 0.18);
+        }
+
+        .library-empty {
+            display: none;
+            padding: 24px 20px 28px;
+            color: var(--panel-muted);
+            text-align: center;
             font-size: 14px;
         }
 
-        /* File Search Section */
-        .file-search-section {
-            margin-top: 20px;
-            border-top: 1px solid rgb(204, 204, 204);
-            padding-top: 10px;
-        }
+        @media (max-width: 640px) {
+            html,
+            body {
+                min-width: 360px;
+            }
 
-        .file-search-section input {
-            width: calc(100% - 22px);
-            padding: 10px;
-            border-radius: 5px;
-            border: 1px solid #ccc;
-            margin-bottom: 10px;
-            font-size: 14px;
+            #container {
+                padding: 14px;
+            }
+
+            .panel-card,
+            .panel-hero {
+                border-radius: 16px;
+            }
+
+            .actions {
+                flex-direction: column;
+            }
+
+            .actions button {
+                width: 100%;
+            }
         }
     </style>
 </head>
 
 <body>
     <div id="container">
-        <h2>NetSuite SuiteQL Runner</h2>
+        <section class="panel-hero">
+            <p class="eyebrow">Chrome Extension</p>
+            <h1>Suitesense</h1>
+            <p class="hero-copy">Run SuiteQL on the current NetSuite record page, execute SuiteScript snippets, and inspect field data without leaving your tab.</p>
+        </section>
 
-        <label for="queryHistory">Query History:</label>
-        <select id="queryHistory">
-            <option value="" disabled selected>Select a previous query...</option>
-        </select>
+        <section class="panel-card settings-card">
+            <div class="settings-copy">
+                <h2 class="settings-title">Inline NetSuite Helpers</h2>
+                <p class="settings-text">Turn the Saved Search and Role inline pickers on only when you want them. Switch it off to keep the native NetSuite dropdowns.</p>
+            </div>
+            <label class="toggle-row" for="inlineEnhancementsToggle">
+                <input id="inlineEnhancementsToggle" type="checkbox" checked />
+                <span class="toggle-track" aria-hidden="true"></span>
+                <span id="inlineEnhancementsState" class="toggle-state">On</span>
+            </label>
+        </section>
 
-        <label for="query">Enter your SuiteQL query:</label>
-        <textarea id="query" placeholder="Enter your SuiteQL query here"></textarea>
+        <section class="panel-card settings-card">
+            <div class="settings-copy">
+                <h2 class="settings-title">Command Palette Navigation</h2>
+                <p class="settings-text">Choose whether command palette navigation opens records and pages in a new tab or reuses the current NetSuite tab.</p>
+            </div>
+            <label class="toggle-row" for="commandPaletteNavigationToggle">
+                <input id="commandPaletteNavigationToggle" type="checkbox" checked />
+                <span class="toggle-track" aria-hidden="true"></span>
+                <span id="commandPaletteNavigationState" class="toggle-state">New Tab</span>
+            </label>
+        </section>
 
-        <button id="runQuery">Run Query</button>
+        <section class="panel-card">
+            <h2 class="section-title">Query Runner</h2>
+            <p class="section-copy">Work against the active NetSuite tab directly from the side panel.</p>
 
-        <!-- New button to open the Query Library modal -->
-        <button id="openQueryLibrary">Open Query Library</button>
+            <div class="field-stack">
+                <label for="queryHistory">Query History</label>
+                <select id="queryHistory">
+                    <option value="" disabled selected>Select a previous query...</option>
+                </select>
+            </div>
 
-        <div class="script-section">
-            <label for="scriptSelect">Choose a Task:</label>
-            <select id="scriptSelect">
-                <option value="" disabled selected>Select a Task...</option>
-                <option value="checkUnappliedPayments">Monitor Unapplied Payments</option>
-                <option value="cloneSalesOrder">Clone a Sales Order with All Its Line Items</option>
-                <option value="check&Notify">Check and Notify Low Stock Items</option>
-            </select>
-            <button id="runScript">Run Task</button>
-        </div>
+            <div class="field-stack">
+                <label for="query">SuiteQL Query</label>
+                <div class="editor-shell query-editor-shell">
+                    <div class="editor-toolbar">
+                        <div class="editor-title">
+                            <span class="editor-dots" aria-hidden="true">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </span>
+                            <span>SuiteQL Editor</span>
+                        </div>
+                        <div class="editor-meta">SQL / SuiteQL</div>
+                    </div>
+                    <div id="queryEditorMount"></div>
+                    <textarea id="query" placeholder="Enter your SuiteQL query here"></textarea>
+                    <div id="queryAutocomplete" class="editor-autocomplete"></div>
+                    <div class="editor-statusbar">
+                        <span id="queryCursorStatus">Ln 1, Col 1</span>
+                        <span>Ctrl+Space for SQL autocomplete</span>
+                    </div>
+                </div>
+                <div id="suggestions" class="suggestions-box"></div>
+            </div>
 
-        <!-- Salesforce Integration Section -->
-        <div class="integration-section">
-            <label for="customerId">Enter Customer ID to Send to Salesforce:</label>
-            <input type="text" id="customerId" placeholder="Customer Internal ID">
-            <button id="sendToSalesforce">Send to Salesforce</button>
-        </div>
+            <div class="actions">
+                <button id="runQuery">Run Query</button>
+                <button id="openQueryLibrary">Query Library</button>
+                <button id="openRecordsCatalog">Records Catalog</button>
+                <button id="fetchFields">Fetch Current Fields</button>
+            </div>
+        </section>
 
-        <!-- File Search Section -->
-        <div class="file-search-section">
-            <label for="fileNameInput">Enter File Name to Search:</label>
-            <input type="text" id="fileNameInput" placeholder="Enter File Name">
-            <button id="searchFileButton">Search File</button>
-        </div>
+        <section class="panel-card">
+            <h2 class="section-title">Current Output</h2>
+            <p class="section-copy">Query results, fetched field payloads, and script responses appear here.</p>
+            <div id="outputShell" class="output-shell is-empty">
+                <div class="output-toolbar">
+                    <div class="output-meta">
+                        <span id="outputStatus" class="output-status">Ready</span>
+                        <span id="outputHint" class="output-hint">Waiting for a query, field fetch, or script result.</span>
+                    </div>
+                    <div class="output-actions">
+                        <button id="copyOutput" class="output-action" type="button">Copy</button>
+                        <button id="clearOutput" class="output-action" type="button">Clear</button>
+                    </div>
+                </div>
+                <div id="outputEmpty" class="output-empty">Run a query, fetch current fields, or execute a SuiteScript snippet to see a compact summary and the latest payload here.</div>
+                <pre id="output"></pre>
+            </div>
+            <div id="errorBox"></div>
+        </section>
 
-        <div class="fetch-fields-section">
-            <button id="fetchFields">Fetch All Fields from Current Record</button>
-        </div>
+        <section class="panel-card">
+            <h2 class="section-title">SuiteScript Runner</h2>
+            <p class="section-copy">Execute a snippet in the current NetSuite page context.</p>
+            <div class="editor-shell">
+                <div class="editor-toolbar">
+                    <div class="editor-title">
+                        <span class="editor-dots" aria-hidden="true">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </span>
+                        <span>SuiteScript Editor</span>
+                    </div>
+                    <div class="editor-meta">JavaScript / SuiteScript 2.x</div>
+                </div>
+                <div id="suiteScriptEditorMount"></div>
+                <textarea id="suiteScriptInput" placeholder="Enter SuiteScript to run..."></textarea>
+                <div id="suiteScriptAutocomplete" class="editor-autocomplete"></div>
+                <div class="editor-statusbar">
+                    <span id="editorCursorStatus">Ln 1, Col 1</span>
+                    <span>Ctrl+Space for autocomplete</span>
+                </div>
+            </div>
+            <p class="editor-hint">Use this like a real scratch editor for `record`, `search`, `runtime`, `https`, `email`, `log`, and related NetSuite modules already available in page context.</p>
+            <button id="runSuiteScript">Run Script</button>
+        </section>
 
-        <pre id="output"></pre>
-
-        <div id="loader"></div>
-        <div id="errorBox"></div>
-
-        <div class="footer">
-            <p>Powered by NetSuite</p>
-            <p>Need help? <a href="https://suiteanswers.custhelp.com/app/home" target="_blank">Visit SuiteAnswers</a></p>
-        </div>
+        <section class="panel-card footer">
+            Turning NetSuite chaos into calm.
+            <br>
+            Need help? <a href="https://suiteanswers.custhelp.com/app/home" target="_blank" rel="noreferrer">Visit SuiteAnswers</a>
+        </section>
     </div>
+
+    <div id="loader"></div>
+    <div id="queryLibraryOverlay" class="library-overlay" aria-hidden="true">
+        <section class="library-modal" role="dialog" aria-modal="true" aria-labelledby="queryLibraryTitle">
+            <div class="library-modal-header">
+                <div>
+                    <h2 id="queryLibraryTitle" class="library-modal-title">Query Library</h2>
+                    <p class="library-modal-copy">Browse ready-to-run SuiteQL queries without leaving the side panel.</p>
+                </div>
+                <button id="closeQueryLibrary" class="library-modal-close" type="button">Close</button>
+            </div>
+            <input id="queryLibrarySearch" class="library-modal-search" type="search" placeholder="Search queries by name or description" />
+            <p class="library-modal-credit">Credits to Tim Dietrich for the excellent queries used in this extension.</p>
+            <div id="queryLibraryList" class="library-modal-list"></div>
+            <div id="queryLibraryEmpty" class="library-empty">No matching queries found.</div>
+        </section>
+    </div>
+    <script src="libs/codemirror.js"></script>
+    <script src="libs/javascript.js"></script>
+    <script src="libs/sql.js"></script>
     <script src="popup.js"></script>
 </body>
 
